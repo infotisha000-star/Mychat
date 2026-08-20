@@ -1,43 +1,56 @@
 import { useState, useEffect, useCallback } from 'react';
-import { generateAccessCode, normalizeCode } from '../utils/codeGenerator';
+import { generateAccessCode } from '../utils/codeGenerator';
+import { rtdb, ref, set, get, remove, onValue } from '../services/firebase';
 
 const CODES_STORAGE_KEY = 'vortex_local_codes';
 const SYNC_CHANNEL_NAME = 'vortex_chat_channel';
-
-const INITIAL_MOCK_CODES = [];
 
 export const useAccessCodes = () => {
   const [accessCodes, setAccessCodes] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Load codes from localStorage
-  const loadCodes = useCallback(() => {
+  // Load codes from Firebase Realtime Database & fallback to LocalStorage
+  useEffect(() => {
+    let unsubscribe = null;
     try {
-      const stored = localStorage.getItem(CODES_STORAGE_KEY);
-      if (stored) {
-        setAccessCodes(JSON.parse(stored));
-      } else {
-        localStorage.setItem(CODES_STORAGE_KEY, JSON.stringify(INITIAL_MOCK_CODES));
-        setAccessCodes(INITIAL_MOCK_CODES);
-      }
+      const codesRef = ref(rtdb, 'accessCodes');
+      unsubscribe = onValue(codesRef, (snapshot) => {
+        if (snapshot.exists()) {
+          const val = snapshot.val();
+          const list = Array.isArray(val)
+            ? val.filter(Boolean)
+            : Object.values(val);
+          // Sort newest first
+          list.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+          setAccessCodes(list);
+          localStorage.setItem(CODES_STORAGE_KEY, JSON.stringify(list));
+        } else {
+          // If empty in Firebase, check local
+          const stored = localStorage.getItem(CODES_STORAGE_KEY);
+          if (stored) {
+            setAccessCodes(JSON.parse(stored));
+          } else {
+            setAccessCodes([]);
+          }
+        }
+        setLoading(false);
+      }, (err) => {
+        console.warn('Firebase accessCodes sync error, using local:', err);
+        const stored = localStorage.getItem(CODES_STORAGE_KEY);
+        if (stored) setAccessCodes(JSON.parse(stored));
+        setLoading(false);
+      });
     } catch (e) {
-      console.error('Error loading access codes:', e);
-    } finally {
+      console.error('Error connecting to Firebase accessCodes:', e);
+      const stored = localStorage.getItem(CODES_STORAGE_KEY);
+      if (stored) setAccessCodes(JSON.parse(stored));
       setLoading(false);
     }
-  }, []);
 
-  useEffect(() => {
-    loadCodes();
-
-    const handleStorage = (e) => {
-      if (e.key === CODES_STORAGE_KEY) {
-        loadCodes();
-      }
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
     };
-    window.addEventListener('storage', handleStorage);
-    return () => window.removeEventListener('storage', handleStorage);
-  }, [loadCodes]);
+  }, []);
 
   const notifySync = () => {
     if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
@@ -48,7 +61,7 @@ export const useAccessCodes = () => {
   };
 
   /**
-   * Generates a new access code locally.
+   * Generates a new access code and saves to Firebase + LocalStorage.
    */
   const createAccessCode = async (durationHours = 24, maxUses = 1) => {
     const code = generateAccessCode('ROOM');
@@ -59,7 +72,7 @@ export const useAccessCodes = () => {
     }
 
     const newCodeObj = {
-      id: `code_${Date.now()}`,
+      id: `code_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
       code,
       createdAt: new Date().toISOString(),
       expiresAt,
@@ -73,6 +86,14 @@ export const useAccessCodes = () => {
     const updated = [newCodeObj, ...accessCodes];
     setAccessCodes(updated);
     localStorage.setItem(CODES_STORAGE_KEY, JSON.stringify(updated));
+
+    // Save to Firebase Realtime Database
+    try {
+      await set(ref(rtdb, `accessCodes/${newCodeObj.id}`), newCodeObj);
+    } catch (e) {
+      console.warn('Firebase set accessCode failed:', e);
+    }
+
     notifySync();
     return newCodeObj;
   };
@@ -90,6 +111,13 @@ export const useAccessCodes = () => {
 
     setAccessCodes(updated);
     localStorage.setItem(CODES_STORAGE_KEY, JSON.stringify(updated));
+
+    try {
+      await set(ref(rtdb, `accessCodes/${codeId}/isActive`), !currentStatus);
+    } catch (e) {
+      console.warn('Firebase toggle code failed:', e);
+    }
+
     notifySync();
   };
 
@@ -100,6 +128,13 @@ export const useAccessCodes = () => {
     const updated = accessCodes.filter((c) => c.id !== codeId);
     setAccessCodes(updated);
     localStorage.setItem(CODES_STORAGE_KEY, JSON.stringify(updated));
+
+    try {
+      await remove(ref(rtdb, `accessCodes/${codeId}`));
+    } catch (e) {
+      console.warn('Firebase delete code failed:', e);
+    }
+
     notifySync();
   };
 
@@ -109,6 +144,5 @@ export const useAccessCodes = () => {
     createAccessCode,
     toggleCodeStatus,
     deleteCode,
-    reloadCodes: loadCodes,
   };
 };

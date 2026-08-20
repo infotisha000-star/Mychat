@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { normalizeCode } from '../utils/codeGenerator';
+import { rtdb, ref, get, set } from '../services/firebase';
 
 const AuthContext = createContext(null);
 
@@ -66,7 +67,7 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Validate Access Code & Join Room
+  // Validate Access Code & Join Room via Firebase RTDB / LocalStorage
   const validateAndJoinWithCode = async (rawCode, userName) => {
     const code = normalizeCode(rawCode);
     if (!code) {
@@ -79,11 +80,30 @@ export const AuthProvider = ({ children }) => {
     setLoading(true);
 
     try {
-      // Check stored access codes
-      const storedCodes = localStorage.getItem(CODES_STORAGE_KEY);
-      let localCodesList = storedCodes ? JSON.parse(storedCodes) : [];
+      let matchedCode = null;
+      let isFromFirebase = false;
 
-      let matchedCode = localCodesList.find((c) => c.code === code);
+      // 1. Try checking Firebase Realtime Database first
+      try {
+        const snapshot = await get(ref(rtdb, 'accessCodes'));
+        if (snapshot.exists()) {
+          const val = snapshot.val();
+          const list = Array.isArray(val)
+            ? val.filter(Boolean)
+            : Object.values(val);
+          matchedCode = list.find((c) => c && c.code === code);
+          if (matchedCode) isFromFirebase = true;
+        }
+      } catch (e) {
+        console.warn('Firebase access code fetch failed, checking local storage:', e);
+      }
+
+      // 2. Fallback to LocalStorage if not found in Firebase
+      if (!matchedCode) {
+        const storedCodes = localStorage.getItem(CODES_STORAGE_KEY);
+        let localCodesList = storedCodes ? JSON.parse(storedCodes) : [];
+        matchedCode = localCodesList.find((c) => c && c.code === code);
+      }
 
       if (matchedCode) {
         if (!matchedCode.isActive) {
@@ -101,11 +121,29 @@ export const AuthProvider = ({ children }) => {
           throw new Error('Sorry, this access code has reached its maximum usage limit.');
         }
 
-        // Update usage count
-        matchedCode.currentUses = (matchedCode.currentUses || 0) + 1;
-        matchedCode.assignedUserName = userName.trim();
-        matchedCode.lastActive = new Date().toISOString();
-        localStorage.setItem(CODES_STORAGE_KEY, JSON.stringify(localCodesList));
+        const newUses = (matchedCode.currentUses || 0) + 1;
+
+        // Update in Firebase Realtime Database
+        if (isFromFirebase) {
+          try {
+            await set(ref(rtdb, `accessCodes/${matchedCode.id}/currentUses`), newUses);
+            await set(ref(rtdb, `accessCodes/${matchedCode.id}/assignedUserName`), userName.trim());
+            await set(ref(rtdb, `accessCodes/${matchedCode.id}/lastActive`), new Date().toISOString());
+          } catch (e) {
+            console.warn('Firebase usage update error:', e);
+          }
+        }
+
+        // Update in LocalStorage
+        const storedCodes = localStorage.getItem(CODES_STORAGE_KEY);
+        let localCodesList = storedCodes ? JSON.parse(storedCodes) : [];
+        const localMatch = localCodesList.find((c) => c && c.id === matchedCode.id);
+        if (localMatch) {
+          localMatch.currentUses = newUses;
+          localMatch.assignedUserName = userName.trim();
+          localMatch.lastActive = new Date().toISOString();
+          localStorage.setItem(CODES_STORAGE_KEY, JSON.stringify(localCodesList));
+        }
       } else {
         throw new Error('Sorry, this access code is invalid or has expired. Please ask the Admin for a new code.');
       }

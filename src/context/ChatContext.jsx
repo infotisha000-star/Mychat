@@ -1,14 +1,12 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useAuth } from './AuthContext';
+import { rtdb, ref, set, get, onValue, remove, push } from '../services/firebase';
 
 const ChatContext = createContext(null);
 
 const MESSAGES_KEY = 'vortex_local_messages';
 const SESSIONS_KEY = 'vortex_local_sessions';
 const SYNC_CHANNEL_NAME = 'vortex_chat_channel';
-
-// Default initial production messages (empty)
-const INITIAL_MOCK_MESSAGES = [];
 
 export const ChatProvider = ({ children }) => {
   const { user } = useAuth();
@@ -20,6 +18,7 @@ export const ChatProvider = ({ children }) => {
 
   const [broadcastChannel, setBroadcastChannel] = useState(null);
 
+  // Sync BroadcastChannel locally
   useEffect(() => {
     if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
       const channel = new BroadcastChannel(SYNC_CHANNEL_NAME);
@@ -35,27 +34,73 @@ export const ChatProvider = ({ children }) => {
     }
   }, []);
 
+  // Firebase Realtime Database sync for Messages
   useEffect(() => {
-    const handleStorageChange = (e) => {
-      if (e.key === MESSAGES_KEY || e.key === SESSIONS_KEY) {
+    let unsubscribe = null;
+    try {
+      const msgsRef = ref(rtdb, 'messages');
+      unsubscribe = onValue(msgsRef, (snapshot) => {
+        if (snapshot.exists()) {
+          const val = snapshot.val();
+          const list = Array.isArray(val)
+            ? val.filter(Boolean)
+            : Object.values(val);
+          
+          // Sort oldest to newest for chat
+          list.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+          setMessages(list);
+          setPinnedMessages(list.filter((m) => m.pinned && !m.deleted));
+          localStorage.setItem(MESSAGES_KEY, JSON.stringify(list));
+        } else {
+          loadStateFromStorage();
+        }
+        setLoadingMessages(false);
+      }, (err) => {
+        console.warn('Firebase messages sync warning, falling back to local:', err);
         loadStateFromStorage();
-      }
+      });
+    } catch (e) {
+      console.error('Firebase messages listener setup failed:', e);
+      loadStateFromStorage();
+    }
+
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
     };
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
+
+  // Sync Active User Presence in Firebase
+  useEffect(() => {
+    if (!user) return;
+    try {
+      const sessionObj = {
+        id: user.uid,
+        userName: user.userName || (user.isAdmin ? 'Admin' : 'User'),
+        code: user.code || 'JOINED',
+        joinedAt: user.joinedAt || new Date().toISOString(),
+      };
+      set(ref(rtdb, `presence/${user.uid}`), sessionObj).catch(console.warn);
+
+      // Listen to active users
+      const presenceRef = ref(rtdb, 'presence');
+      const unsub = onValue(presenceRef, (snapshot) => {
+        if (snapshot.exists()) {
+          const val = snapshot.val();
+          const list = Object.values(val);
+          setActiveUsers(list);
+          localStorage.setItem(SESSIONS_KEY, JSON.stringify(list));
+        }
+      });
+      return () => unsub();
+    } catch (e) {
+      console.warn('Presence sync error:', e);
+    }
+  }, [user]);
 
   const loadStateFromStorage = useCallback(() => {
     try {
       const storedMsgs = localStorage.getItem(MESSAGES_KEY);
-      let msgsList = [];
-      if (storedMsgs) {
-        msgsList = JSON.parse(storedMsgs);
-      } else {
-        msgsList = INITIAL_MOCK_MESSAGES;
-        localStorage.setItem(MESSAGES_KEY, JSON.stringify(INITIAL_MOCK_MESSAGES));
-      }
-
+      let msgsList = storedMsgs ? JSON.parse(storedMsgs) : [];
       setMessages(msgsList);
       setPinnedMessages(msgsList.filter((m) => m.pinned && !m.deleted));
 
@@ -71,10 +116,6 @@ export const ChatProvider = ({ children }) => {
       setLoadingMessages(false);
     }
   }, []);
-
-  useEffect(() => {
-    loadStateFromStorage();
-  }, [user, loadStateFromStorage]);
 
   const notifySync = () => {
     if (broadcastChannel) {
@@ -127,6 +168,14 @@ export const ChatProvider = ({ children }) => {
     setMessages(updated);
     setPinnedMessages(updated.filter((m) => m.pinned && !m.deleted));
     localStorage.setItem(MESSAGES_KEY, JSON.stringify(updated));
+
+    // Save to Firebase RTDB
+    try {
+      await set(ref(rtdb, `messages/${newMessage.id}`), newMessage);
+    } catch (e) {
+      console.warn('Firebase sendMessage error:', e);
+    }
+
     notifySync();
     return newMessage.id;
   };
@@ -136,6 +185,7 @@ export const ChatProvider = ({ children }) => {
     if (!user) return;
     const userId = user.uid;
 
+    let targetMsg = null;
     const updated = messages.map((msg) => {
       if (msg.id === messageId) {
         const reactions = { ...(msg.reactions || {}) };
@@ -148,13 +198,23 @@ export const ChatProvider = ({ children }) => {
           reactions[emoji] = [...currentUsers, userId];
         }
 
-        return { ...msg, reactions };
+        targetMsg = { ...msg, reactions };
+        return targetMsg;
       }
       return msg;
     });
 
     setMessages(updated);
     localStorage.setItem(MESSAGES_KEY, JSON.stringify(updated));
+
+    if (targetMsg) {
+      try {
+        await set(ref(rtdb, `messages/${messageId}/reactions`), targetMsg.reactions || {});
+      } catch (e) {
+        console.warn('Firebase reaction update failed:', e);
+      }
+    }
+
     notifySync();
   };
 
@@ -162,18 +222,20 @@ export const ChatProvider = ({ children }) => {
   const editMessage = async (messageId, newText) => {
     if (!user) throw new Error('Not authenticated');
 
+    let editedMsgObj = null;
     const updated = messages.map((msg) => {
       if (msg.id === messageId) {
         if (msg.editCount >= 3) {
           throw new Error('This message has been edited the maximum limit of 3 times.');
         }
-        return {
+        editedMsgObj = {
           ...msg,
           text: newText.trim(),
           edited: true,
           editCount: (msg.editCount || 0) + 1,
           editedAt: new Date().toISOString(),
         };
+        return editedMsgObj;
       }
       return msg;
     });
@@ -181,6 +243,15 @@ export const ChatProvider = ({ children }) => {
     setMessages(updated);
     setPinnedMessages(updated.filter((m) => m.pinned && !m.deleted));
     localStorage.setItem(MESSAGES_KEY, JSON.stringify(updated));
+
+    if (editedMsgObj) {
+      try {
+        await set(ref(rtdb, `messages/${messageId}`), editedMsgObj);
+      } catch (e) {
+        console.warn('Firebase edit message error:', e);
+      }
+    }
+
     notifySync();
   };
 
@@ -188,13 +259,15 @@ export const ChatProvider = ({ children }) => {
   const deleteMessage = async (messageId) => {
     if (!user) throw new Error('Not authenticated');
 
+    let deletedMsgObj = null;
     const updated = messages.map((msg) => {
       if (msg.id === messageId) {
-        return {
+        deletedMsgObj = {
           ...msg,
           deleted: true,
           deletedAt: new Date().toISOString(),
         };
+        return deletedMsgObj;
       }
       return msg;
     });
@@ -202,6 +275,15 @@ export const ChatProvider = ({ children }) => {
     setMessages(updated);
     setPinnedMessages(updated.filter((m) => m.pinned && !m.deleted));
     localStorage.setItem(MESSAGES_KEY, JSON.stringify(updated));
+
+    if (deletedMsgObj) {
+      try {
+        await set(ref(rtdb, `messages/${messageId}`), deletedMsgObj);
+      } catch (e) {
+        console.warn('Firebase delete message error:', e);
+      }
+    }
+
     notifySync();
   };
 
@@ -212,11 +294,13 @@ export const ChatProvider = ({ children }) => {
     const idsSet = new Set(messageIds);
     const updated = messages.map((msg) => {
       if (idsSet.has(msg.id)) {
-        return {
+        const deletedObj = {
           ...msg,
           deleted: true,
           deletedAt: new Date().toISOString(),
         };
+        set(ref(rtdb, `messages/${msg.id}`), deletedObj).catch(console.warn);
+        return deletedObj;
       }
       return msg;
     });
@@ -231,14 +315,16 @@ export const ChatProvider = ({ children }) => {
   const togglePinMessage = async (messageId) => {
     if (!user) throw new Error('Not authenticated');
 
+    let pinnedObj = null;
     const updated = messages.map((msg) => {
       if (msg.id === messageId) {
-        return {
+        pinnedObj = {
           ...msg,
           pinned: !msg.pinned,
           pinnedAt: !msg.pinned ? new Date().toISOString() : null,
           pinnedBy: !msg.pinned ? (user.displayName || user.userName || 'Admin') : null,
         };
+        return pinnedObj;
       }
       return msg;
     });
@@ -246,6 +332,15 @@ export const ChatProvider = ({ children }) => {
     setMessages(updated);
     setPinnedMessages(updated.filter((m) => m.pinned && !m.deleted));
     localStorage.setItem(MESSAGES_KEY, JSON.stringify(updated));
+
+    if (pinnedObj) {
+      try {
+        await set(ref(rtdb, `messages/${messageId}`), pinnedObj);
+      } catch (e) {
+        console.warn('Firebase pin message error:', e);
+      }
+    }
+
     notifySync();
   };
 

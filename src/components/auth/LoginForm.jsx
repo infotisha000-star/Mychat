@@ -3,13 +3,13 @@ import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { Input } from '../ui/Input';
 import { Button } from '../ui/Button';
-import { Mail, Lock, ShieldCheck, Info } from 'lucide-react';
+import { Mail, Lock, ShieldCheck } from 'lucide-react';
 
 export const LoginForm = () => {
   const { adminLogin } = useAuth();
   const toast = useToast();
-  const [email, setEmail] = useState('info.shorif0000@gmail.com');
-  const [password, setPassword] = useState('admin');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e) => {
@@ -58,14 +58,7 @@ export const LoginForm = () => {
         required
       />
 
-      {/* Dev Bypass Testing Info */}
-      <div className="p-3 bg-slate-950/80 border border-slate-800 rounded-xl text-slate-300 text-xs flex items-center gap-2">
-        <Info className="w-4 h-4 text-indigo-400 shrink-0" />
-        <div>
-          <span className="font-bold text-white">Dev Testing Password: </span>
-          <span className="font-mono text-cyan-300 font-bold">admin</span>
-        </div>
-      </div>
+
 
       <Button
         type="submit"
