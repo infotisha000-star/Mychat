@@ -256,7 +256,7 @@ export const ChatProvider = ({ children }) => {
     notifySync();
   };
 
-  // Instant Non-blocking Edit Message
+  // Instant Non-blocking Edit Message (Admin or Message Owner)
   const editMessage = async (messageId, newText) => {
     if (!user) throw new Error('Not authenticated');
 
@@ -264,7 +264,7 @@ export const ChatProvider = ({ children }) => {
     setMessages((prev) =>
       prev.map((msg) => {
         if (msg.id === messageId) {
-          if (msg.editCount >= 3) {
+          if (!user.isAdmin && msg.editCount >= 3) {
             throw new Error('This message has been edited the maximum limit of 3 times.');
           }
           editedMsgObj = {
@@ -288,7 +288,7 @@ export const ChatProvider = ({ children }) => {
     notifySync();
   };
 
-  // Instant Non-blocking Soft Delete
+  // Instant Non-blocking Soft Delete (Admin or Message Owner)
   const deleteMessage = async (messageId) => {
     if (!user) throw new Error('Not authenticated');
 
@@ -335,6 +335,22 @@ export const ChatProvider = ({ children }) => {
         return msg;
       })
     );
+
+    notifySync();
+  };
+
+  // Admin Master Clear All Messages
+  const clearAllMessages = async () => {
+    if (!user || !user.isAdmin) return;
+
+    const allIds = messages.map((m) => m.id);
+    setMessages([]);
+    localStorage.setItem(MESSAGES_KEY, JSON.stringify([]));
+
+    allIds.forEach((id) => {
+      setDoc(doc(db, 'messages', id), { deleted: true, deletedAt: new Date().toISOString() }, { merge: true }).catch(console.warn);
+      set(ref(rtdb, `messages/${id}/deleted`), true).catch(console.warn);
+    });
 
     notifySync();
   };
@@ -390,6 +406,7 @@ export const ChatProvider = ({ children }) => {
         editMessage,
         deleteMessage,
         deleteMultipleMessages,
+        clearAllMessages,
         togglePinMessage,
         loadStateFromStorage,
       }}
