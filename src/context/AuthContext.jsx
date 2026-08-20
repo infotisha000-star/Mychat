@@ -40,28 +40,27 @@ export const AuthProvider = ({ children }) => {
   const adminLogin = async (email, password) => {
     setLoading(true);
     try {
-      if (email === 'info.shorif0000@gmail.com') {
-        const adminUser = {
-          uid: 'admin_local_id',
-          email: 'info.shorif0000@gmail.com',
-          displayName: 'Admin',
-          role: 'admin',
-          isAdmin: true,
-        };
-        const sessionObj = {
-          sessionId: adminUser.uid,
-          userName: 'Admin',
-          code: 'ADMIN',
-          role: 'admin',
-          isAdmin: true,
-          joinedAt: new Date().toISOString(),
-        };
-        localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(sessionObj));
-        setUser(adminUser);
-        return adminUser;
-      } else {
-        throw new Error('Admin email must be info.shorif0000@gmail.com');
+      if (!email || !email.trim() || !password || !password.trim()) {
+        throw new Error('Please enter both email and password.');
       }
+      const adminUser = {
+        uid: 'admin_session_id',
+        email: email.trim(),
+        displayName: 'Admin',
+        role: 'admin',
+        isAdmin: true,
+      };
+      const sessionObj = {
+        sessionId: adminUser.uid,
+        userName: 'Admin',
+        code: 'ADMIN',
+        role: 'admin',
+        isAdmin: true,
+        joinedAt: new Date().toISOString(),
+      };
+      localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(sessionObj));
+      setUser(adminUser);
+      return adminUser;
     } finally {
       setLoading(false);
     }

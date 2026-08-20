@@ -6,8 +6,15 @@ const CODES_STORAGE_KEY = 'vortex_local_codes';
 const SYNC_CHANNEL_NAME = 'vortex_chat_channel';
 
 export const useAccessCodes = () => {
-  const [accessCodes, setAccessCodes] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [accessCodes, setAccessCodes] = useState(() => {
+    try {
+      const stored = localStorage.getItem(CODES_STORAGE_KEY);
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [loading, setLoading] = useState(false);
 
   // Load & listen to access codes from Firebase Realtime Database
   useEffect(() => {
@@ -26,7 +33,7 @@ export const useAccessCodes = () => {
           setAccessCodes(list);
           localStorage.setItem(CODES_STORAGE_KEY, JSON.stringify(list));
         } else {
-          // If empty in Firebase (e.g. manually deleted or empty)
+          // If empty in Firebase
           setAccessCodes([]);
           localStorage.setItem(CODES_STORAGE_KEY, JSON.stringify([]));
         }
@@ -81,11 +88,17 @@ export const useAccessCodes = () => {
     };
 
     // Instant local state update
-    const updated = [newCodeObj, ...accessCodes];
-    setAccessCodes(updated);
-    localStorage.setItem(CODES_STORAGE_KEY, JSON.stringify(updated));
+    setAccessCodes((prev) => [newCodeObj, ...prev]);
+    
+    try {
+      const stored = localStorage.getItem(CODES_STORAGE_KEY);
+      const currentList = stored ? JSON.parse(stored) : [];
+      localStorage.setItem(CODES_STORAGE_KEY, JSON.stringify([newCodeObj, ...currentList]));
+    } catch (e) {
+      console.warn('LocalStorage save error:', e);
+    }
 
-    // Non-blocking Firebase write
+    // Sync to Firebase
     set(ref(rtdb, `accessCodes/${newCodeObj.id}`), newCodeObj).catch((e) => {
       console.warn('Firebase set accessCode failed:', e);
     });
@@ -98,15 +111,9 @@ export const useAccessCodes = () => {
    * Deactivates/Enables a code instantly.
    */
   const toggleCodeStatus = async (codeId, currentStatus) => {
-    const updated = accessCodes.map((c) => {
-      if (c.id === codeId) {
-        return { ...c, isActive: !currentStatus };
-      }
-      return c;
-    });
-
-    setAccessCodes(updated);
-    localStorage.setItem(CODES_STORAGE_KEY, JSON.stringify(updated));
+    setAccessCodes((prev) =>
+      prev.map((c) => (c.id === codeId ? { ...c, isActive: !currentStatus } : c))
+    );
 
     set(ref(rtdb, `accessCodes/${codeId}/isActive`), !currentStatus).catch((e) => {
       console.warn('Firebase toggle code failed:', e);
@@ -119,9 +126,17 @@ export const useAccessCodes = () => {
    * Deletes a code permanently from Firebase + LocalStorage.
    */
   const deleteCode = async (codeId) => {
-    const updated = accessCodes.filter((c) => c.id !== codeId);
-    setAccessCodes(updated);
-    localStorage.setItem(CODES_STORAGE_KEY, JSON.stringify(updated));
+    setAccessCodes((prev) => prev.filter((c) => c.id !== codeId));
+
+    try {
+      const stored = localStorage.getItem(CODES_STORAGE_KEY);
+      if (stored) {
+        const list = JSON.parse(stored).filter((c) => c.id !== codeId);
+        localStorage.setItem(CODES_STORAGE_KEY, JSON.stringify(list));
+      }
+    } catch (e) {
+      console.warn('LocalStorage delete error:', e);
+    }
 
     // Permanently remove node from Firebase
     remove(ref(rtdb, `accessCodes/${codeId}`)).catch((e) => {

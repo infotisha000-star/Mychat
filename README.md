@@ -178,7 +178,7 @@ APPWRITE_API_KEY=your_secret_appwrite_api_key
 ## 5. Security Rules (`firestore.rules`)
 
 Security rules strictly enforce:
-1. **Admin Authorization**: Verified by email `info.shorif0000@gmail.com` or custom auth claim.
+1. **Admin Authorization**: Verified by email `admin@example.com` or custom auth claim.
 2. **Access Codes**: Read access permitted for verification; creation/update/deletion restricted to Admin.
 3. **Message Edit Counter**: Messages can be edited up to a maximum of **3 times** (`request.resource.data.editCount <= 3`). 4th attempt is blocked.
 4. **Soft Deletion**: Messages are soft-deleted (`deleted: true`), keeping chat timeline consistent.
@@ -191,7 +191,7 @@ Security rules strictly enforce:
 1. Go to [Firebase Console](https://console.firebase.google.com/).
 2. Select your Firebase project -> **Authentication** -> **Users**.
 3. Click **Add User**:
-   - **Email**: `info.shorif0000@gmail.com`
+   - **Email**: `admin@example.com`
    - **Password**: Enter your strong password (do not commit passwords to source code).
 4. Save the user. You can now use these credentials under the **ADMIN LOGIN** tab on the website.
 

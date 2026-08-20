@@ -41,7 +41,7 @@ export const LoginForm = () => {
       <Input
         label="Admin Email"
         type="email"
-        placeholder="info.shorif0000@gmail.com"
+        placeholder="admin@example.com"
         icon={Mail}
         value={email}
         onChange={(e) => setEmail(e.target.value)}

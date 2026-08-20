@@ -104,7 +104,7 @@ export const AccessCodeManager = () => {
           Generated Access Codes ({accessCodes.length})
         </h4>
 
-        {loading ? (
+        {loading && accessCodes.length === 0 ? (
           <div className="text-xs text-slate-500 py-4 text-center">Loading access codes...</div>
         ) : accessCodes.length === 0 ? (
           <div className="text-xs text-slate-500 py-6 text-center bg-slate-950/40 dark:bg-slate-950/40 light:bg-slate-100 rounded-xl border border-slate-800 dark:border-slate-800 light:border-slate-200">
