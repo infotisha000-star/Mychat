@@ -9,8 +9,8 @@ const CODES_STORAGE_KEY = 'vortex_local_codes';
 
 export const TEST_BYPASS_CODES = [];
 
-// Helper to fetch with timeout so network delays never freeze UI
-const fetchWithTimeout = (promise, ms = 2500) => {
+// Helper to fetch with fast timeout
+const fetchWithTimeout = (promise, ms = 2000) => {
   let timer = null;
   const timeoutPromise = new Promise((_, reject) => {
     timer = setTimeout(() => reject(new Error('Fetch timeout')), ms);
@@ -85,26 +85,39 @@ export const AuthProvider = ({ children }) => {
     let matchedCode = null;
     let isFromFirebase = false;
 
-    // 1. Try checking Firebase Realtime Database first with a fast 2.5s timeout
+    // 1. Check direct index in Firebase RTDB (codes_index/ROOM-XXXX)
     try {
-      const snapshot = await fetchWithTimeout(get(ref(rtdb, 'accessCodes')), 2500);
-      if (snapshot && snapshot.exists()) {
-        const val = snapshot.val();
-        const list = Array.isArray(val)
-          ? val.filter(Boolean)
-          : Object.values(val);
-        matchedCode = list.find((c) => c && c.code === code);
+      const indexSnapshot = await fetchWithTimeout(get(ref(rtdb, `codes_index/${code}`)), 2000);
+      if (indexSnapshot && indexSnapshot.exists()) {
+        matchedCode = indexSnapshot.val();
         if (matchedCode) isFromFirebase = true;
       }
     } catch (e) {
-      console.warn('Firebase access code fetch timed out or failed, using local storage fallback:', e);
+      console.warn('Direct code index fetch warning:', e);
     }
 
-    // 2. Fallback to LocalStorage if not found in Firebase
+    // 2. Check all accessCodes in Firebase RTDB
+    if (!matchedCode) {
+      try {
+        const snapshot = await fetchWithTimeout(get(ref(rtdb, 'accessCodes')), 2000);
+        if (snapshot && snapshot.exists()) {
+          const val = snapshot.val();
+          const list = Array.isArray(val)
+            ? val.filter(Boolean)
+            : Object.values(val);
+          matchedCode = list.find((c) => c && normalizeCode(c.code) === code);
+          if (matchedCode) isFromFirebase = true;
+        }
+      } catch (e) {
+        console.warn('All accessCodes fetch warning:', e);
+      }
+    }
+
+    // 3. Fallback to LocalStorage if not found in Firebase
     if (!matchedCode) {
       const storedCodes = localStorage.getItem(CODES_STORAGE_KEY);
       let localCodesList = storedCodes ? JSON.parse(storedCodes) : [];
-      matchedCode = localCodesList.find((c) => c && c.code === code);
+      matchedCode = localCodesList.find((c) => c && normalizeCode(c.code) === code);
     }
 
     if (matchedCode) {
@@ -128,6 +141,7 @@ export const AuthProvider = ({ children }) => {
       // Update in Firebase Realtime Database asynchronously
       if (isFromFirebase) {
         set(ref(rtdb, `accessCodes/${matchedCode.id}/currentUses`), newUses).catch(console.warn);
+        set(ref(rtdb, `codes_index/${matchedCode.code}/currentUses`), newUses).catch(console.warn);
         set(ref(rtdb, `accessCodes/${matchedCode.id}/assignedUserName`), userName.trim()).catch(console.warn);
         set(ref(rtdb, `accessCodes/${matchedCode.id}/lastActive`), new Date().toISOString()).catch(console.warn);
       }

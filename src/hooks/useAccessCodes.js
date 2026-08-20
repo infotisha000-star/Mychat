@@ -33,21 +33,16 @@ export const useAccessCodes = () => {
           setAccessCodes(list);
           localStorage.setItem(CODES_STORAGE_KEY, JSON.stringify(list));
         } else {
-          // If empty in Firebase
           setAccessCodes([]);
           localStorage.setItem(CODES_STORAGE_KEY, JSON.stringify([]));
         }
         setLoading(false);
       }, (err) => {
         console.warn('Firebase accessCodes listener error, using local:', err);
-        const stored = localStorage.getItem(CODES_STORAGE_KEY);
-        if (stored) setAccessCodes(JSON.parse(stored));
         setLoading(false);
       });
     } catch (e) {
       console.error('Error connecting to Firebase accessCodes:', e);
-      const stored = localStorage.getItem(CODES_STORAGE_KEY);
-      if (stored) setAccessCodes(JSON.parse(stored));
       setLoading(false);
     }
 
@@ -98,10 +93,9 @@ export const useAccessCodes = () => {
       console.warn('LocalStorage save error:', e);
     }
 
-    // Sync to Firebase
-    set(ref(rtdb, `accessCodes/${newCodeObj.id}`), newCodeObj).catch((e) => {
-      console.warn('Firebase set accessCode failed:', e);
-    });
+    // Sync to Firebase (under accessCodes AND codes_index)
+    set(ref(rtdb, `accessCodes/${newCodeObj.id}`), newCodeObj).catch(console.warn);
+    set(ref(rtdb, `codes_index/${newCodeObj.code}`), newCodeObj).catch(console.warn);
 
     notifySync();
     return newCodeObj;
@@ -111,13 +105,21 @@ export const useAccessCodes = () => {
    * Deactivates/Enables a code instantly.
    */
   const toggleCodeStatus = async (codeId, currentStatus) => {
+    let targetCode = null;
     setAccessCodes((prev) =>
-      prev.map((c) => (c.id === codeId ? { ...c, isActive: !currentStatus } : c))
+      prev.map((c) => {
+        if (c.id === codeId) {
+          targetCode = { ...c, isActive: !currentStatus };
+          return targetCode;
+        }
+        return c;
+      })
     );
 
-    set(ref(rtdb, `accessCodes/${codeId}/isActive`), !currentStatus).catch((e) => {
-      console.warn('Firebase toggle code failed:', e);
-    });
+    if (targetCode) {
+      set(ref(rtdb, `accessCodes/${codeId}/isActive`), !currentStatus).catch(console.warn);
+      set(ref(rtdb, `codes_index/${targetCode.code}/isActive`), !currentStatus).catch(console.warn);
+    }
 
     notifySync();
   };
@@ -126,7 +128,12 @@ export const useAccessCodes = () => {
    * Deletes a code permanently from Firebase + LocalStorage.
    */
   const deleteCode = async (codeId) => {
-    setAccessCodes((prev) => prev.filter((c) => c.id !== codeId));
+    let deletedCodeString = null;
+    setAccessCodes((prev) => {
+      const found = prev.find((c) => c.id === codeId);
+      if (found) deletedCodeString = found.code;
+      return prev.filter((c) => c.id !== codeId);
+    });
 
     try {
       const stored = localStorage.getItem(CODES_STORAGE_KEY);
@@ -138,10 +145,11 @@ export const useAccessCodes = () => {
       console.warn('LocalStorage delete error:', e);
     }
 
-    // Permanently remove node from Firebase
-    remove(ref(rtdb, `accessCodes/${codeId}`)).catch((e) => {
-      console.warn('Firebase delete code failed:', e);
-    });
+    // Permanently remove nodes from Firebase
+    remove(ref(rtdb, `accessCodes/${codeId}`)).catch(console.warn);
+    if (deletedCodeString) {
+      remove(ref(rtdb, `codes_index/${deletedCodeString}`)).catch(console.warn);
+    }
 
     notifySync();
   };

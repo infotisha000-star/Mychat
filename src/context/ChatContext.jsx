@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useAuth } from './AuthContext';
-import { rtdb, ref, set, get, onValue, remove, push } from '../services/firebase';
+import { rtdb, ref, set, onValue } from '../services/firebase';
 
 const ChatContext = createContext(null);
 
@@ -10,10 +10,17 @@ const SYNC_CHANNEL_NAME = 'vortex_chat_channel';
 
 export const ChatProvider = ({ children }) => {
   const { user } = useAuth();
-  const [messages, setMessages] = useState([]);
+  const [messages, setMessages] = useState(() => {
+    try {
+      const storedMsgs = localStorage.getItem(MESSAGES_KEY);
+      return storedMsgs ? JSON.parse(storedMsgs) : [];
+    } catch {
+      return [];
+    }
+  });
   const [pinnedMessages, setPinnedMessages] = useState([]);
   const [activeUsers, setActiveUsers] = useState([]);
-  const [loadingMessages, setLoadingMessages] = useState(true);
+  const [loadingMessages, setLoadingMessages] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
   const [broadcastChannel, setBroadcastChannel] = useState(null);
@@ -34,6 +41,11 @@ export const ChatProvider = ({ children }) => {
     }
   }, []);
 
+  // Update pinned messages whenever messages change
+  useEffect(() => {
+    setPinnedMessages(messages.filter((m) => m.pinned && !m.deleted));
+  }, [messages]);
+
   // Firebase Realtime Database sync for Messages
   useEffect(() => {
     let unsubscribe = null;
@@ -46,22 +58,19 @@ export const ChatProvider = ({ children }) => {
             ? val.filter(Boolean)
             : Object.values(val);
           
-          // Sort oldest to newest for chat
+          // Sort oldest to newest for chat timeline
           list.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
           setMessages(list);
-          setPinnedMessages(list.filter((m) => m.pinned && !m.deleted));
           localStorage.setItem(MESSAGES_KEY, JSON.stringify(list));
-        } else {
-          loadStateFromStorage();
         }
         setLoadingMessages(false);
       }, (err) => {
         console.warn('Firebase messages sync warning, falling back to local:', err);
-        loadStateFromStorage();
+        setLoadingMessages(false);
       });
     } catch (e) {
       console.error('Firebase messages listener setup failed:', e);
-      loadStateFromStorage();
+      setLoadingMessages(false);
     }
 
     return () => {
@@ -102,13 +111,10 @@ export const ChatProvider = ({ children }) => {
       const storedMsgs = localStorage.getItem(MESSAGES_KEY);
       let msgsList = storedMsgs ? JSON.parse(storedMsgs) : [];
       setMessages(msgsList);
-      setPinnedMessages(msgsList.filter((m) => m.pinned && !m.deleted));
 
       const storedSessions = localStorage.getItem(SESSIONS_KEY);
       if (storedSessions) {
         setActiveUsers(JSON.parse(storedSessions));
-      } else {
-        setActiveUsers([]);
       }
     } catch (e) {
       console.error('Error loading state from localStorage:', e);
@@ -123,7 +129,7 @@ export const ChatProvider = ({ children }) => {
     }
   };
 
-  // Send Message
+  // Instant Non-blocking Send Message
   const sendMessage = async ({ text = '', media = [], replyTo = null }) => {
     if (!user) throw new Error('Not authenticated');
     if (!text.trim() && media.length === 0) {
@@ -164,181 +170,161 @@ export const ChatProvider = ({ children }) => {
       reactions: {},
     };
 
-    const updated = [...messages, newMessage];
-    setMessages(updated);
-    setPinnedMessages(updated.filter((m) => m.pinned && !m.deleted));
-    localStorage.setItem(MESSAGES_KEY, JSON.stringify(updated));
+    // 1. Instant local state update (0ms delay!)
+    setMessages((prev) => [...prev, newMessage]);
 
-    // Save to Firebase RTDB
     try {
-      await set(ref(rtdb, `messages/${newMessage.id}`), newMessage);
+      const stored = localStorage.getItem(MESSAGES_KEY);
+      const currentList = stored ? JSON.parse(stored) : [];
+      localStorage.setItem(MESSAGES_KEY, JSON.stringify([...currentList, newMessage]));
     } catch (e) {
-      console.warn('Firebase sendMessage error:', e);
+      console.warn('LocalStorage save warning:', e);
     }
+
+    // 2. Non-blocking Firebase write (Async in background)
+    set(ref(rtdb, `messages/${newMessage.id}`), newMessage).catch((e) => {
+      console.warn('Firebase sendMessage background sync warning:', e);
+    });
 
     notifySync();
     return newMessage.id;
   };
 
-  // Toggle Reaction
+  // Instant Non-blocking Reaction Toggle
   const toggleReaction = async (messageId, emoji) => {
     if (!user) return;
     const userId = user.uid;
 
     let targetMsg = null;
-    const updated = messages.map((msg) => {
-      if (msg.id === messageId) {
-        const reactions = { ...(msg.reactions || {}) };
-        const currentUsers = reactions[emoji] || [];
+    setMessages((prev) =>
+      prev.map((msg) => {
+        if (msg.id === messageId) {
+          const reactions = { ...(msg.reactions || {}) };
+          const currentUsers = reactions[emoji] || [];
 
-        if (currentUsers.includes(userId)) {
-          reactions[emoji] = currentUsers.filter((id) => id !== userId);
-          if (reactions[emoji].length === 0) delete reactions[emoji];
-        } else {
-          reactions[emoji] = [...currentUsers, userId];
+          if (currentUsers.includes(userId)) {
+            reactions[emoji] = currentUsers.filter((id) => id !== userId);
+            if (reactions[emoji].length === 0) delete reactions[emoji];
+          } else {
+            reactions[emoji] = [...currentUsers, userId];
+          }
+
+          targetMsg = { ...msg, reactions };
+          return targetMsg;
         }
-
-        targetMsg = { ...msg, reactions };
-        return targetMsg;
-      }
-      return msg;
-    });
-
-    setMessages(updated);
-    localStorage.setItem(MESSAGES_KEY, JSON.stringify(updated));
+        return msg;
+      })
+    );
 
     if (targetMsg) {
-      try {
-        await set(ref(rtdb, `messages/${messageId}/reactions`), targetMsg.reactions || {});
-      } catch (e) {
-        console.warn('Firebase reaction update failed:', e);
-      }
+      set(ref(rtdb, `messages/${messageId}/reactions`), targetMsg.reactions || {}).catch(console.warn);
     }
 
     notifySync();
   };
 
-  // Edit Message (Max 3 Edits Enforced!)
+  // Instant Non-blocking Edit Message
   const editMessage = async (messageId, newText) => {
     if (!user) throw new Error('Not authenticated');
 
     let editedMsgObj = null;
-    const updated = messages.map((msg) => {
-      if (msg.id === messageId) {
-        if (msg.editCount >= 3) {
-          throw new Error('This message has been edited the maximum limit of 3 times.');
+    setMessages((prev) =>
+      prev.map((msg) => {
+        if (msg.id === messageId) {
+          if (msg.editCount >= 3) {
+            throw new Error('This message has been edited the maximum limit of 3 times.');
+          }
+          editedMsgObj = {
+            ...msg,
+            text: newText.trim(),
+            edited: true,
+            editCount: (msg.editCount || 0) + 1,
+            editedAt: new Date().toISOString(),
+          };
+          return editedMsgObj;
         }
-        editedMsgObj = {
-          ...msg,
-          text: newText.trim(),
-          edited: true,
-          editCount: (msg.editCount || 0) + 1,
-          editedAt: new Date().toISOString(),
-        };
-        return editedMsgObj;
-      }
-      return msg;
-    });
-
-    setMessages(updated);
-    setPinnedMessages(updated.filter((m) => m.pinned && !m.deleted));
-    localStorage.setItem(MESSAGES_KEY, JSON.stringify(updated));
+        return msg;
+      })
+    );
 
     if (editedMsgObj) {
-      try {
-        await set(ref(rtdb, `messages/${messageId}`), editedMsgObj);
-      } catch (e) {
-        console.warn('Firebase edit message error:', e);
-      }
+      set(ref(rtdb, `messages/${messageId}`), editedMsgObj).catch(console.warn);
     }
 
     notifySync();
   };
 
-  // Soft Delete Message
+  // Instant Non-blocking Soft Delete
   const deleteMessage = async (messageId) => {
     if (!user) throw new Error('Not authenticated');
 
     let deletedMsgObj = null;
-    const updated = messages.map((msg) => {
-      if (msg.id === messageId) {
-        deletedMsgObj = {
-          ...msg,
-          deleted: true,
-          deletedAt: new Date().toISOString(),
-        };
-        return deletedMsgObj;
-      }
-      return msg;
-    });
-
-    setMessages(updated);
-    setPinnedMessages(updated.filter((m) => m.pinned && !m.deleted));
-    localStorage.setItem(MESSAGES_KEY, JSON.stringify(updated));
+    setMessages((prev) =>
+      prev.map((msg) => {
+        if (msg.id === messageId) {
+          deletedMsgObj = {
+            ...msg,
+            deleted: true,
+            deletedAt: new Date().toISOString(),
+          };
+          return deletedMsgObj;
+        }
+        return msg;
+      })
+    );
 
     if (deletedMsgObj) {
-      try {
-        await set(ref(rtdb, `messages/${messageId}`), deletedMsgObj);
-      } catch (e) {
-        console.warn('Firebase delete message error:', e);
-      }
+      set(ref(rtdb, `messages/${messageId}`), deletedMsgObj).catch(console.warn);
     }
 
     notifySync();
   };
 
-  // Bulk Delete Multiple Messages
+  // Bulk Delete
   const deleteMultipleMessages = async (messageIds = []) => {
     if (!user || messageIds.length === 0) return;
 
     const idsSet = new Set(messageIds);
-    const updated = messages.map((msg) => {
-      if (idsSet.has(msg.id)) {
-        const deletedObj = {
-          ...msg,
-          deleted: true,
-          deletedAt: new Date().toISOString(),
-        };
-        set(ref(rtdb, `messages/${msg.id}`), deletedObj).catch(console.warn);
-        return deletedObj;
-      }
-      return msg;
-    });
+    setMessages((prev) =>
+      prev.map((msg) => {
+        if (idsSet.has(msg.id)) {
+          const deletedObj = {
+            ...msg,
+            deleted: true,
+            deletedAt: new Date().toISOString(),
+          };
+          set(ref(rtdb, `messages/${msg.id}`), deletedObj).catch(console.warn);
+          return deletedObj;
+        }
+        return msg;
+      })
+    );
 
-    setMessages(updated);
-    setPinnedMessages(updated.filter((m) => m.pinned && !m.deleted));
-    localStorage.setItem(MESSAGES_KEY, JSON.stringify(updated));
     notifySync();
   };
 
-  // Toggle Pin Message
+  // Instant Non-blocking Toggle Pin
   const togglePinMessage = async (messageId) => {
     if (!user) throw new Error('Not authenticated');
 
     let pinnedObj = null;
-    const updated = messages.map((msg) => {
-      if (msg.id === messageId) {
-        pinnedObj = {
-          ...msg,
-          pinned: !msg.pinned,
-          pinnedAt: !msg.pinned ? new Date().toISOString() : null,
-          pinnedBy: !msg.pinned ? (user.displayName || user.userName || 'Admin') : null,
-        };
-        return pinnedObj;
-      }
-      return msg;
-    });
-
-    setMessages(updated);
-    setPinnedMessages(updated.filter((m) => m.pinned && !m.deleted));
-    localStorage.setItem(MESSAGES_KEY, JSON.stringify(updated));
+    setMessages((prev) =>
+      prev.map((msg) => {
+        if (msg.id === messageId) {
+          pinnedObj = {
+            ...msg,
+            pinned: !msg.pinned,
+            pinnedAt: !msg.pinned ? new Date().toISOString() : null,
+            pinnedBy: !msg.pinned ? (user.displayName || user.userName || 'Admin') : null,
+          };
+          return pinnedObj;
+        }
+        return msg;
+      })
+    );
 
     if (pinnedObj) {
-      try {
-        await set(ref(rtdb, `messages/${messageId}`), pinnedObj);
-      } catch (e) {
-        console.warn('Firebase pin message error:', e);
-      }
+      set(ref(rtdb, `messages/${messageId}`), pinnedObj).catch(console.warn);
     }
 
     notifySync();
