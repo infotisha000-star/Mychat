@@ -10,7 +10,7 @@ const CODES_STORAGE_KEY = 'vortex_local_codes';
 export const TEST_BYPASS_CODES = [];
 
 // Helper to fetch with fast timeout
-const fetchWithTimeout = (promise, ms = 2000) => {
+const fetchWithTimeout = (promise, ms = 2500) => {
   let timer = null;
   const timeoutPromise = new Promise((_, reject) => {
     timer = setTimeout(() => reject(new Error('Fetch timeout')), ms);
@@ -74,8 +74,8 @@ export const AuthProvider = ({ children }) => {
 
   // Validate Access Code & Join Room via Firebase RTDB + LocalStorage fallback
   const validateAndJoinWithCode = async (rawCode, userName) => {
-    const code = normalizeCode(rawCode);
-    if (!code) {
+    const cleanCode = normalizeCode(rawCode);
+    if (!cleanCode) {
       throw new Error('Please enter an access code.');
     }
     if (!userName || !userName.trim()) {
@@ -85,9 +85,9 @@ export const AuthProvider = ({ children }) => {
     let matchedCode = null;
     let isFromFirebase = false;
 
-    // 1. Check direct index in Firebase RTDB (codes_index/ROOM-XXXX)
+    // 1. Check direct index in Firebase RTDB (codes_index/ROOM2KEEGD2N)
     try {
-      const indexSnapshot = await fetchWithTimeout(get(ref(rtdb, `codes_index/${code}`)), 2000);
+      const indexSnapshot = await fetchWithTimeout(get(ref(rtdb, `codes_index/${cleanCode}`)), 2500);
       if (indexSnapshot && indexSnapshot.exists()) {
         matchedCode = indexSnapshot.val();
         if (matchedCode) isFromFirebase = true;
@@ -96,16 +96,16 @@ export const AuthProvider = ({ children }) => {
       console.warn('Direct code index fetch warning:', e);
     }
 
-    // 2. Check all accessCodes in Firebase RTDB
+    // 2. Check all accessCodes in Firebase RTDB with flexible normalization
     if (!matchedCode) {
       try {
-        const snapshot = await fetchWithTimeout(get(ref(rtdb, 'accessCodes')), 2000);
+        const snapshot = await fetchWithTimeout(get(ref(rtdb, 'accessCodes')), 2500);
         if (snapshot && snapshot.exists()) {
           const val = snapshot.val();
           const list = Array.isArray(val)
             ? val.filter(Boolean)
             : Object.values(val);
-          matchedCode = list.find((c) => c && normalizeCode(c.code) === code);
+          matchedCode = list.find((c) => c && (normalizeCode(c.code) === cleanCode || c.cleanCode === cleanCode));
           if (matchedCode) isFromFirebase = true;
         }
       } catch (e) {
@@ -117,7 +117,7 @@ export const AuthProvider = ({ children }) => {
     if (!matchedCode) {
       const storedCodes = localStorage.getItem(CODES_STORAGE_KEY);
       let localCodesList = storedCodes ? JSON.parse(storedCodes) : [];
-      matchedCode = localCodesList.find((c) => c && normalizeCode(c.code) === code);
+      matchedCode = localCodesList.find((c) => c && (normalizeCode(c.code) === cleanCode || c.cleanCode === cleanCode));
     }
 
     if (matchedCode) {
@@ -141,7 +141,7 @@ export const AuthProvider = ({ children }) => {
       // Update in Firebase Realtime Database asynchronously
       if (isFromFirebase) {
         set(ref(rtdb, `accessCodes/${matchedCode.id}/currentUses`), newUses).catch(console.warn);
-        set(ref(rtdb, `codes_index/${matchedCode.code}/currentUses`), newUses).catch(console.warn);
+        set(ref(rtdb, `codes_index/${cleanCode}/currentUses`), newUses).catch(console.warn);
         set(ref(rtdb, `accessCodes/${matchedCode.id}/assignedUserName`), userName.trim()).catch(console.warn);
         set(ref(rtdb, `accessCodes/${matchedCode.id}/lastActive`), new Date().toISOString()).catch(console.warn);
       }
@@ -167,7 +167,7 @@ export const AuthProvider = ({ children }) => {
     // Create local user session
     const sessionObj = {
       sessionId: `sess_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-      code: code,
+      code: rawCode.trim(),
       userName: userName.trim(),
       role: 'temp_user',
       isAdmin: false,
@@ -179,7 +179,7 @@ export const AuthProvider = ({ children }) => {
     const tempUserObj = {
       uid: sessionObj.sessionId,
       userName: userName.trim(),
-      code: code,
+      code: rawCode.trim(),
       role: 'temp_user',
       isAdmin: false,
       joinedAt: sessionObj.joinedAt,

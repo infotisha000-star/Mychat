@@ -1,6 +1,6 @@
 /**
  * Generates formatted temporary access codes.
- * Example outputs: "ROOM-7K92-X4P8", "VORTEX-9B2M", "7K92X4P8"
+ * Example outputs: "ROOM-7K92-X4P8", "VORTEX-9B2M"
  */
 export const generateAccessCode = (prefix = 'ROOM') => {
   const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ'; // Exclude ambiguous chars 0, O, 1, I
@@ -18,9 +18,10 @@ export const generateAccessCode = (prefix = 'ROOM') => {
 };
 
 /**
- * Formats user code input into standard uppercase format.
+ * Normalizes user code input (strips hyphens, spaces, underscores, converts to uppercase).
+ * Example: "ROOM-2KEE-GD2N" -> "ROOM2KEEGD2N"
  */
 export const normalizeCode = (input) => {
   if (!input) return '';
-  return input.trim().toUpperCase().replace(/\s+/g, '');
+  return input.trim().toUpperCase().replace(/[\s\-_]/g, '');
 };

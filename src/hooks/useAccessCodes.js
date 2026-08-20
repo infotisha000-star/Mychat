@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { generateAccessCode } from '../utils/codeGenerator';
+import { generateAccessCode, normalizeCode } from '../utils/codeGenerator';
 import { rtdb, ref, set, remove, onValue } from '../services/firebase';
 
 const CODES_STORAGE_KEY = 'vortex_local_codes';
@@ -64,6 +64,7 @@ export const useAccessCodes = () => {
    */
   const createAccessCode = async (durationHours = 24, maxUses = 1) => {
     const code = generateAccessCode('ROOM');
+    const cleanCode = normalizeCode(code);
     
     let expiresAt = null;
     if (durationHours && durationHours > 0) {
@@ -73,6 +74,7 @@ export const useAccessCodes = () => {
     const newCodeObj = {
       id: `code_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
       code,
+      cleanCode,
       createdAt: new Date().toISOString(),
       expiresAt,
       isActive: true,
@@ -93,9 +95,9 @@ export const useAccessCodes = () => {
       console.warn('LocalStorage save error:', e);
     }
 
-    // Sync to Firebase (under accessCodes AND codes_index)
+    // Sync to Firebase (under accessCodes/ AND codes_index/)
     set(ref(rtdb, `accessCodes/${newCodeObj.id}`), newCodeObj).catch(console.warn);
-    set(ref(rtdb, `codes_index/${newCodeObj.code}`), newCodeObj).catch(console.warn);
+    set(ref(rtdb, `codes_index/${cleanCode}`), newCodeObj).catch(console.warn);
 
     notifySync();
     return newCodeObj;
@@ -117,8 +119,9 @@ export const useAccessCodes = () => {
     );
 
     if (targetCode) {
+      const cleanCode = normalizeCode(targetCode.code);
       set(ref(rtdb, `accessCodes/${codeId}/isActive`), !currentStatus).catch(console.warn);
-      set(ref(rtdb, `codes_index/${targetCode.code}/isActive`), !currentStatus).catch(console.warn);
+      set(ref(rtdb, `codes_index/${cleanCode}/isActive`), !currentStatus).catch(console.warn);
     }
 
     notifySync();
@@ -148,7 +151,8 @@ export const useAccessCodes = () => {
     // Permanently remove nodes from Firebase
     remove(ref(rtdb, `accessCodes/${codeId}`)).catch(console.warn);
     if (deletedCodeString) {
-      remove(ref(rtdb, `codes_index/${deletedCodeString}`)).catch(console.warn);
+      const cleanCode = normalizeCode(deletedCodeString);
+      remove(ref(rtdb, `codes_index/${cleanCode}`)).catch(console.warn);
     }
 
     notifySync();
