@@ -2,7 +2,7 @@
   "rules": {
     "accessCodes": {
       ".read": true,
-      ".write": "auth != null && auth.token.email == 'info.shorif0000@gmail.com'"
+      ".write": true
     },
     "sessions": {
       ".read": true,

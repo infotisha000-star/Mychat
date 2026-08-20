@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { generateAccessCode } from '../utils/codeGenerator';
-import { rtdb, ref, set, get, remove, onValue } from '../services/firebase';
+import { rtdb, ref, set, remove, onValue } from '../services/firebase';
 
 const CODES_STORAGE_KEY = 'vortex_local_codes';
 const SYNC_CHANNEL_NAME = 'vortex_chat_channel';
@@ -9,7 +9,7 @@ export const useAccessCodes = () => {
   const [accessCodes, setAccessCodes] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Load codes from Firebase Realtime Database & fallback to LocalStorage
+  // Load & listen to access codes from Firebase Realtime Database
   useEffect(() => {
     let unsubscribe = null;
     try {
@@ -20,22 +20,19 @@ export const useAccessCodes = () => {
           const list = Array.isArray(val)
             ? val.filter(Boolean)
             : Object.values(val);
+          
           // Sort newest first
           list.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
           setAccessCodes(list);
           localStorage.setItem(CODES_STORAGE_KEY, JSON.stringify(list));
         } else {
-          // If empty in Firebase, check local
-          const stored = localStorage.getItem(CODES_STORAGE_KEY);
-          if (stored) {
-            setAccessCodes(JSON.parse(stored));
-          } else {
-            setAccessCodes([]);
-          }
+          // If empty in Firebase (e.g. manually deleted or empty)
+          setAccessCodes([]);
+          localStorage.setItem(CODES_STORAGE_KEY, JSON.stringify([]));
         }
         setLoading(false);
       }, (err) => {
-        console.warn('Firebase accessCodes sync error, using local:', err);
+        console.warn('Firebase accessCodes listener error, using local:', err);
         const stored = localStorage.getItem(CODES_STORAGE_KEY);
         if (stored) setAccessCodes(JSON.parse(stored));
         setLoading(false);
@@ -61,7 +58,7 @@ export const useAccessCodes = () => {
   };
 
   /**
-   * Generates a new access code and saves to Firebase + LocalStorage.
+   * Generates a new access code and saves to Firebase + LocalStorage instantly.
    */
   const createAccessCode = async (durationHours = 24, maxUses = 1) => {
     const code = generateAccessCode('ROOM');
@@ -83,16 +80,15 @@ export const useAccessCodes = () => {
       lastActive: null,
     };
 
+    // Instant local state update
     const updated = [newCodeObj, ...accessCodes];
     setAccessCodes(updated);
     localStorage.setItem(CODES_STORAGE_KEY, JSON.stringify(updated));
 
-    // Save to Firebase Realtime Database
-    try {
-      await set(ref(rtdb, `accessCodes/${newCodeObj.id}`), newCodeObj);
-    } catch (e) {
+    // Non-blocking Firebase write
+    set(ref(rtdb, `accessCodes/${newCodeObj.id}`), newCodeObj).catch((e) => {
       console.warn('Firebase set accessCode failed:', e);
-    }
+    });
 
     notifySync();
     return newCodeObj;
@@ -112,28 +108,25 @@ export const useAccessCodes = () => {
     setAccessCodes(updated);
     localStorage.setItem(CODES_STORAGE_KEY, JSON.stringify(updated));
 
-    try {
-      await set(ref(rtdb, `accessCodes/${codeId}/isActive`), !currentStatus);
-    } catch (e) {
+    set(ref(rtdb, `accessCodes/${codeId}/isActive`), !currentStatus).catch((e) => {
       console.warn('Firebase toggle code failed:', e);
-    }
+    });
 
     notifySync();
   };
 
   /**
-   * Deletes a code permanently.
+   * Deletes a code permanently from Firebase + LocalStorage.
    */
   const deleteCode = async (codeId) => {
     const updated = accessCodes.filter((c) => c.id !== codeId);
     setAccessCodes(updated);
     localStorage.setItem(CODES_STORAGE_KEY, JSON.stringify(updated));
 
-    try {
-      await remove(ref(rtdb, `accessCodes/${codeId}`));
-    } catch (e) {
+    // Permanently remove node from Firebase
+    remove(ref(rtdb, `accessCodes/${codeId}`)).catch((e) => {
       console.warn('Firebase delete code failed:', e);
-    }
+    });
 
     notifySync();
   };
