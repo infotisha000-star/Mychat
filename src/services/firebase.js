@@ -40,13 +40,14 @@ import {
   serverTimestamp as rtdbTimestamp
 } from 'firebase/database';
 
+// Production Firebase Configuration with actual project defaults for Netlify build safety
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyDemoKeyForVortexChatPWA",
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "vortex-chat-demo.firebaseapp.com",
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "vortex-chat-demo",
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "vortex-chat-demo.appspot.com",
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "123456789012",
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:123456789012:web:demo123456",
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyBU3FsuCnmxZz6qQb82qjgRPop7p0Z2Nx0",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "mychat-72524.firebaseapp.com",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "mychat-72524",
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "mychat-72524.firebasestorage.app",
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "291071978486",
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:291071978486:web:ffe2399522fb158780b5d7",
   databaseURL: import.meta.env.VITE_FIREBASE_DATABASE_URL || "https://mychat-72524-default-rtdb.firebaseio.com"
 };
 
@@ -96,4 +97,3 @@ export {
   onDisconnect,
   rtdbTimestamp
 };
-
