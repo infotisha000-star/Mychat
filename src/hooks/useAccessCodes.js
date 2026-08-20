@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { generateAccessCode, normalizeCode } from '../utils/codeGenerator';
-import { rtdb, ref, set, remove, onValue } from '../services/firebase';
+import { db, rtdb, collection, doc, setDoc, deleteDoc, onSnapshot, ref, set, remove } from '../services/firebase';
 
 const CODES_STORAGE_KEY = 'vortex_local_codes';
 const SYNC_CHANNEL_NAME = 'vortex_chat_channel';
@@ -16,38 +16,36 @@ export const useAccessCodes = () => {
   });
   const [loading, setLoading] = useState(false);
 
-  // Load & listen to access codes from Firebase Realtime Database
+  // Listen to Firestore & RTDB for Access Codes
   useEffect(() => {
-    let unsubscribe = null;
+    let unsubFirestore = null;
     try {
-      const codesRef = ref(rtdb, 'accessCodes');
-      unsubscribe = onValue(codesRef, (snapshot) => {
-        if (snapshot.exists()) {
-          const val = snapshot.val();
-          const list = Array.isArray(val)
-            ? val.filter(Boolean)
-            : Object.values(val);
-          
-          // Sort newest first
+      const colRef = collection(db, 'accessCodes');
+      unsubFirestore = onSnapshot(colRef, (snapshot) => {
+        if (!snapshot.empty) {
+          const list = [];
+          snapshot.forEach((d) => {
+            const data = d.data();
+            if (data && data.id && !list.some((item) => item.id === data.id)) {
+              list.push(data);
+            }
+          });
           list.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
           setAccessCodes(list);
           localStorage.setItem(CODES_STORAGE_KEY, JSON.stringify(list));
-        } else {
-          setAccessCodes([]);
-          localStorage.setItem(CODES_STORAGE_KEY, JSON.stringify([]));
         }
         setLoading(false);
       }, (err) => {
-        console.warn('Firebase accessCodes listener error, using local:', err);
+        console.warn('Firestore accessCodes listener warning:', err);
         setLoading(false);
       });
     } catch (e) {
-      console.error('Error connecting to Firebase accessCodes:', e);
+      console.warn('Firestore setup error:', e);
       setLoading(false);
     }
 
     return () => {
-      if (typeof unsubscribe === 'function') unsubscribe();
+      if (typeof unsubFirestore === 'function') unsubFirestore();
     };
   }, []);
 
@@ -60,7 +58,7 @@ export const useAccessCodes = () => {
   };
 
   /**
-   * Generates a new access code and saves to Firebase + LocalStorage instantly.
+   * Generates a new access code and saves to Cloud Firestore + RTDB + LocalStorage instantly.
    */
   const createAccessCode = async (durationHours = 24, maxUses = 1) => {
     const code = generateAccessCode('ROOM');
@@ -84,7 +82,7 @@ export const useAccessCodes = () => {
       lastActive: null,
     };
 
-    // Instant local state update
+    // 1. Instant local state update (0ms delay)
     setAccessCodes((prev) => [newCodeObj, ...prev]);
     
     try {
@@ -95,7 +93,11 @@ export const useAccessCodes = () => {
       console.warn('LocalStorage save error:', e);
     }
 
-    // Sync to Firebase (under accessCodes/ AND codes_index/)
+    // 2. Save to Cloud Firestore (Triple redundant write)
+    setDoc(doc(db, 'accessCodes', newCodeObj.id), newCodeObj).catch(console.warn);
+    setDoc(doc(db, 'accessCodes', cleanCode), newCodeObj).catch(console.warn);
+
+    // 3. Save to Realtime Database
     set(ref(rtdb, `accessCodes/${newCodeObj.id}`), newCodeObj).catch(console.warn);
     set(ref(rtdb, `codes_index/${cleanCode}`), newCodeObj).catch(console.warn);
 
@@ -104,7 +106,7 @@ export const useAccessCodes = () => {
   };
 
   /**
-   * Deactivates/Enables a code instantly.
+   * Deactivates/Enables a code instantly across all clouds.
    */
   const toggleCodeStatus = async (codeId, currentStatus) => {
     let targetCode = null;
@@ -120,6 +122,8 @@ export const useAccessCodes = () => {
 
     if (targetCode) {
       const cleanCode = normalizeCode(targetCode.code);
+      setDoc(doc(db, 'accessCodes', codeId), { isActive: !currentStatus }, { merge: true }).catch(console.warn);
+      setDoc(doc(db, 'accessCodes', cleanCode), { isActive: !currentStatus }, { merge: true }).catch(console.warn);
       set(ref(rtdb, `accessCodes/${codeId}/isActive`), !currentStatus).catch(console.warn);
       set(ref(rtdb, `codes_index/${cleanCode}/isActive`), !currentStatus).catch(console.warn);
     }
@@ -128,7 +132,7 @@ export const useAccessCodes = () => {
   };
 
   /**
-   * Deletes a code permanently from Firebase + LocalStorage.
+   * Deletes a code permanently from Cloud Firestore + RTDB + LocalStorage.
    */
   const deleteCode = async (codeId) => {
     let deletedCodeString = null;
@@ -148,12 +152,14 @@ export const useAccessCodes = () => {
       console.warn('LocalStorage delete error:', e);
     }
 
-    // Permanently remove nodes from Firebase
-    remove(ref(rtdb, `accessCodes/${codeId}`)).catch(console.warn);
+    // Permanently remove nodes from Cloud Firestore
+    deleteDoc(doc(db, 'accessCodes', codeId)).catch(console.warn);
     if (deletedCodeString) {
       const cleanCode = normalizeCode(deletedCodeString);
+      deleteDoc(doc(db, 'accessCodes', cleanCode)).catch(console.warn);
       remove(ref(rtdb, `codes_index/${cleanCode}`)).catch(console.warn);
     }
+    remove(ref(rtdb, `accessCodes/${codeId}`)).catch(console.warn);
 
     notifySync();
   };

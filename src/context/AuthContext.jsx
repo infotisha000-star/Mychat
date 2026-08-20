@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { normalizeCode } from '../utils/codeGenerator';
-import { rtdb, ref, get, set } from '../services/firebase';
+import { db, rtdb, collection, doc, getDoc, getDocs, setDoc, ref, get, set } from '../services/firebase';
 
 const AuthContext = createContext(null);
 
@@ -9,8 +9,8 @@ const CODES_STORAGE_KEY = 'vortex_local_codes';
 
 export const TEST_BYPASS_CODES = [];
 
-// Helper to fetch with fast timeout
-const fetchWithTimeout = (promise, ms = 2500) => {
+// Fast fetch timeout wrapper
+const fetchWithTimeout = (promise, ms = 2000) => {
   let timer = null;
   const timeoutPromise = new Promise((_, reject) => {
     timer = setTimeout(() => reject(new Error('Fetch timeout')), ms);
@@ -72,7 +72,7 @@ export const AuthProvider = ({ children }) => {
     return adminUser;
   };
 
-  // Validate Access Code & Join Room via Firebase RTDB + LocalStorage fallback
+  // Triple-Redundant Access Code Verification (Firestore + RTDB + LocalStorage)
   const validateAndJoinWithCode = async (rawCode, userName) => {
     const cleanCode = normalizeCode(rawCode);
     if (!cleanCode) {
@@ -83,37 +83,47 @@ export const AuthProvider = ({ children }) => {
     }
 
     let matchedCode = null;
-    let isFromFirebase = false;
 
-    // 1. Check direct index in Firebase RTDB (codes_index/ROOM2KEEGD2N)
+    // 1. Check Cloud Firestore direct doc (accessCodes/ROOM92NMCKB3)
     try {
-      const indexSnapshot = await fetchWithTimeout(get(ref(rtdb, `codes_index/${cleanCode}`)), 2500);
-      if (indexSnapshot && indexSnapshot.exists()) {
-        matchedCode = indexSnapshot.val();
-        if (matchedCode) isFromFirebase = true;
+      const docSnap = await fetchWithTimeout(getDoc(doc(db, 'accessCodes', cleanCode)), 2000);
+      if (docSnap && docSnap.exists()) {
+        matchedCode = docSnap.data();
       }
     } catch (e) {
-      console.warn('Direct code index fetch warning:', e);
+      console.warn('Firestore direct doc fetch warning:', e);
     }
 
-    // 2. Check all accessCodes in Firebase RTDB with flexible normalization
+    // 2. Check Cloud Firestore collection search
     if (!matchedCode) {
       try {
-        const snapshot = await fetchWithTimeout(get(ref(rtdb, 'accessCodes')), 2500);
-        if (snapshot && snapshot.exists()) {
-          const val = snapshot.val();
-          const list = Array.isArray(val)
-            ? val.filter(Boolean)
-            : Object.values(val);
-          matchedCode = list.find((c) => c && (normalizeCode(c.code) === cleanCode || c.cleanCode === cleanCode));
-          if (matchedCode) isFromFirebase = true;
+        const querySnap = await fetchWithTimeout(getDocs(collection(db, 'accessCodes')), 2000);
+        if (querySnap && !querySnap.empty) {
+          querySnap.forEach((d) => {
+            const data = d.data();
+            if (data && (normalizeCode(data.code) === cleanCode || data.cleanCode === cleanCode)) {
+              matchedCode = data;
+            }
+          });
         }
       } catch (e) {
-        console.warn('All accessCodes fetch warning:', e);
+        console.warn('Firestore collection fetch warning:', e);
       }
     }
 
-    // 3. Fallback to LocalStorage if not found in Firebase
+    // 3. Check Realtime Database direct index (codes_index/ROOM92NMCKB3)
+    if (!matchedCode) {
+      try {
+        const indexSnapshot = await fetchWithTimeout(get(ref(rtdb, `codes_index/${cleanCode}`)), 2000);
+        if (indexSnapshot && indexSnapshot.exists()) {
+          matchedCode = indexSnapshot.val();
+        }
+      } catch (e) {
+        console.warn('RTDB index fetch warning:', e);
+      }
+    }
+
+    // 4. Fallback to LocalStorage
     if (!matchedCode) {
       const storedCodes = localStorage.getItem(CODES_STORAGE_KEY);
       let localCodesList = storedCodes ? JSON.parse(storedCodes) : [];
@@ -138,13 +148,13 @@ export const AuthProvider = ({ children }) => {
 
       const newUses = (matchedCode.currentUses || 0) + 1;
 
-      // Update in Firebase Realtime Database asynchronously
-      if (isFromFirebase) {
-        set(ref(rtdb, `accessCodes/${matchedCode.id}/currentUses`), newUses).catch(console.warn);
-        set(ref(rtdb, `codes_index/${cleanCode}/currentUses`), newUses).catch(console.warn);
-        set(ref(rtdb, `accessCodes/${matchedCode.id}/assignedUserName`), userName.trim()).catch(console.warn);
-        set(ref(rtdb, `accessCodes/${matchedCode.id}/lastActive`), new Date().toISOString()).catch(console.warn);
-      }
+      // Update in Cloud Firestore
+      setDoc(doc(db, 'accessCodes', matchedCode.id), { currentUses: newUses, assignedUserName: userName.trim() }, { merge: true }).catch(console.warn);
+      setDoc(doc(db, 'accessCodes', cleanCode), { currentUses: newUses, assignedUserName: userName.trim() }, { merge: true }).catch(console.warn);
+
+      // Update in Realtime Database
+      set(ref(rtdb, `accessCodes/${matchedCode.id}/currentUses`), newUses).catch(console.warn);
+      set(ref(rtdb, `codes_index/${cleanCode}/currentUses`), newUses).catch(console.warn);
 
       // Update in LocalStorage
       try {
@@ -154,7 +164,6 @@ export const AuthProvider = ({ children }) => {
         if (localMatch) {
           localMatch.currentUses = newUses;
           localMatch.assignedUserName = userName.trim();
-          localMatch.lastActive = new Date().toISOString();
           localStorage.setItem(CODES_STORAGE_KEY, JSON.stringify(localCodesList));
         }
       } catch (e) {
