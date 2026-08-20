@@ -1,0 +1,26 @@
+{
+  "rules": {
+    "accessCodes": {
+      ".read": true,
+      ".write": "auth != null && auth.token.email == 'info.shorif0000@gmail.com'"
+    },
+    "sessions": {
+      ".read": true,
+      ".write": true
+    },
+    "messages": {
+      ".read": true,
+      ".write": true
+    },
+    "typing": {
+      ".read": true,
+      ".write": true
+    },
+    "presence": {
+      ".read": true,
+      "$userId": {
+        ".write": true
+      }
+    }
+  }
+}
