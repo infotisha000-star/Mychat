@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useAuth } from './AuthContext';
-import { rtdb, ref, set, onValue } from '../services/firebase';
+import { db, rtdb, collection, doc, setDoc, deleteDoc, onSnapshot, ref, set, onValue } from '../services/firebase';
 
 const ChatContext = createContext(null);
 
@@ -46,35 +46,67 @@ export const ChatProvider = ({ children }) => {
     setPinnedMessages(messages.filter((m) => m.pinned && !m.deleted));
   }, [messages]);
 
-  // Firebase Realtime Database sync for Messages
+  // Dual Realtime Stream Listener (Cloud Firestore + Realtime Database)
   useEffect(() => {
-    let unsubscribe = null;
+    let unsubFirestore = null;
+    let unsubRTDB = null;
+
+    const mergeAndSetMessages = (newList) => {
+      setMessages((prev) => {
+        const msgMap = new Map();
+        // Keep existing
+        prev.forEach((m) => m && m.id && msgMap.set(m.id, m));
+        // Merge new
+        newList.forEach((m) => m && m.id && msgMap.set(m.id, m));
+
+        const merged = Array.from(msgMap.values());
+        merged.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+        localStorage.setItem(MESSAGES_KEY, JSON.stringify(merged));
+        return merged;
+      });
+      setLoadingMessages(false);
+    };
+
+    // 1. Listen to Cloud Firestore messages
+    try {
+      const colRef = collection(db, 'messages');
+      unsubFirestore = onSnapshot(colRef, (snapshot) => {
+        if (!snapshot.empty) {
+          const list = [];
+          snapshot.forEach((d) => {
+            const data = d.data();
+            if (data && data.id) list.push(data);
+          });
+          mergeAndSetMessages(list);
+        }
+      }, (err) => {
+        console.warn('Firestore messages listener warning:', err);
+      });
+    } catch (e) {
+      console.warn('Firestore listener setup failed:', e);
+    }
+
+    // 2. Listen to Realtime Database messages
     try {
       const msgsRef = ref(rtdb, 'messages');
-      unsubscribe = onValue(msgsRef, (snapshot) => {
+      unsubRTDB = onValue(msgsRef, (snapshot) => {
         if (snapshot.exists()) {
           const val = snapshot.val();
           const list = Array.isArray(val)
             ? val.filter(Boolean)
             : Object.values(val);
-          
-          // Sort oldest to newest for chat timeline
-          list.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-          setMessages(list);
-          localStorage.setItem(MESSAGES_KEY, JSON.stringify(list));
+          mergeAndSetMessages(list);
         }
-        setLoadingMessages(false);
       }, (err) => {
-        console.warn('Firebase messages sync warning, falling back to local:', err);
-        setLoadingMessages(false);
+        console.warn('RTDB messages listener warning:', err);
       });
     } catch (e) {
-      console.error('Firebase messages listener setup failed:', e);
-      setLoadingMessages(false);
+      console.warn('RTDB listener setup failed:', e);
     }
 
     return () => {
-      if (typeof unsubscribe === 'function') unsubscribe();
+      if (typeof unsubFirestore === 'function') unsubFirestore();
+      if (typeof unsubRTDB === 'function') unsubRTDB();
     };
   }, []);
 
@@ -89,6 +121,7 @@ export const ChatProvider = ({ children }) => {
         joinedAt: user.joinedAt || new Date().toISOString(),
       };
       set(ref(rtdb, `presence/${user.uid}`), sessionObj).catch(console.warn);
+      setDoc(doc(db, 'sessions', user.uid), sessionObj).catch(console.warn);
 
       // Listen to active users
       const presenceRef = ref(rtdb, 'presence');
@@ -129,7 +162,7 @@ export const ChatProvider = ({ children }) => {
     }
   };
 
-  // Instant Non-blocking Send Message
+  // Instant Non-blocking Send Message (Writes to Firestore + RTDB)
   const sendMessage = async ({ text = '', media = [], replyTo = null }) => {
     if (!user) throw new Error('Not authenticated');
     if (!text.trim() && media.length === 0) {
@@ -181,10 +214,9 @@ export const ChatProvider = ({ children }) => {
       console.warn('LocalStorage save warning:', e);
     }
 
-    // 2. Non-blocking Firebase write (Async in background)
-    set(ref(rtdb, `messages/${newMessage.id}`), newMessage).catch((e) => {
-      console.warn('Firebase sendMessage background sync warning:', e);
-    });
+    // 2. Dual Cloud Writes in background (Firestore + RTDB)
+    setDoc(doc(db, 'messages', newMessage.id), newMessage).catch(console.warn);
+    set(ref(rtdb, `messages/${newMessage.id}`), newMessage).catch(console.warn);
 
     notifySync();
     return newMessage.id;
@@ -217,6 +249,7 @@ export const ChatProvider = ({ children }) => {
     );
 
     if (targetMsg) {
+      setDoc(doc(db, 'messages', messageId), { reactions: targetMsg.reactions || {} }, { merge: true }).catch(console.warn);
       set(ref(rtdb, `messages/${messageId}/reactions`), targetMsg.reactions || {}).catch(console.warn);
     }
 
@@ -248,6 +281,7 @@ export const ChatProvider = ({ children }) => {
     );
 
     if (editedMsgObj) {
+      setDoc(doc(db, 'messages', messageId), editedMsgObj, { merge: true }).catch(console.warn);
       set(ref(rtdb, `messages/${messageId}`), editedMsgObj).catch(console.warn);
     }
 
@@ -274,6 +308,7 @@ export const ChatProvider = ({ children }) => {
     );
 
     if (deletedMsgObj) {
+      setDoc(doc(db, 'messages', messageId), deletedMsgObj, { merge: true }).catch(console.warn);
       set(ref(rtdb, `messages/${messageId}`), deletedMsgObj).catch(console.warn);
     }
 
@@ -293,6 +328,7 @@ export const ChatProvider = ({ children }) => {
             deleted: true,
             deletedAt: new Date().toISOString(),
           };
+          setDoc(doc(db, 'messages', msg.id), deletedObj, { merge: true }).catch(console.warn);
           set(ref(rtdb, `messages/${msg.id}`), deletedObj).catch(console.warn);
           return deletedObj;
         }
@@ -324,6 +360,7 @@ export const ChatProvider = ({ children }) => {
     );
 
     if (pinnedObj) {
+      setDoc(doc(db, 'messages', messageId), pinnedObj, { merge: true }).catch(console.warn);
       set(ref(rtdb, `messages/${messageId}`), pinnedObj).catch(console.warn);
     }
 

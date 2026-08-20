@@ -30,14 +30,22 @@ export const AuthProvider = ({ children }) => {
       const storedSession = localStorage.getItem(SESSION_STORAGE_KEY);
       if (storedSession) {
         const parsedSession = JSON.parse(storedSession);
-        setUser({
-          uid: parsedSession.sessionId,
-          userName: parsedSession.userName,
-          code: parsedSession.code,
-          role: parsedSession.role || 'temp_user',
-          isAdmin: parsedSession.isAdmin || false,
-          joinedAt: parsedSession.joinedAt,
-        });
+
+        // If code has already expired before app start, purge session
+        if (parsedSession.expiresAt && new Date(parsedSession.expiresAt).getTime() <= Date.now()) {
+          localStorage.removeItem(SESSION_STORAGE_KEY);
+          setUser(null);
+        } else {
+          setUser({
+            uid: parsedSession.sessionId,
+            userName: parsedSession.userName,
+            code: parsedSession.code,
+            role: parsedSession.role || 'temp_user',
+            isAdmin: parsedSession.isAdmin || false,
+            joinedAt: parsedSession.joinedAt,
+            expiresAt: parsedSession.expiresAt || null,
+          });
+        }
       }
     } catch (e) {
       console.error('Error restoring session:', e);
@@ -46,6 +54,21 @@ export const AuthProvider = ({ children }) => {
       setLoading(false);
     }
   }, []);
+
+  // Automatic Session Expiry Monitor (Auto Logout when Code Expires)
+  useEffect(() => {
+    if (!user || user.isAdmin || !user.expiresAt) return;
+
+    const checkInterval = setInterval(() => {
+      const expTime = new Date(user.expiresAt).getTime();
+      if (Date.now() >= expTime) {
+        logout();
+        alert('Your access code session has expired. You have been automatically logged out.');
+      }
+    }, 5000);
+
+    return () => clearInterval(checkInterval);
+  }, [user]);
 
   // Admin login with instant verification
   const adminLogin = async (email, password) => {
@@ -66,6 +89,7 @@ export const AuthProvider = ({ children }) => {
       role: 'admin',
       isAdmin: true,
       joinedAt: new Date().toISOString(),
+      expiresAt: null,
     };
     localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(sessionObj));
     setUser(adminUser);
@@ -134,6 +158,7 @@ export const AuthProvider = ({ children }) => {
           isActive: true,
           currentUses: 1,
           maxUses: 999,
+          expiresAt: new Date(Date.now() + 24 * 3600000).toISOString(),
         };
       }
     }
@@ -156,7 +181,7 @@ export const AuthProvider = ({ children }) => {
       setDoc(doc(db, 'accessCodes', matchedCode.id || cleanCode), { currentUses: newUses, assignedUserName: userName.trim() }, { merge: true }).catch(console.warn);
       set(ref(rtdb, `accessCodes/${matchedCode.id || cleanCode}/currentUses`), newUses).catch(console.warn);
 
-      // Create local user session
+      // Create local user session with expiration
       const sessionObj = {
         sessionId: `sess_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
         code: rawCode.trim().toUpperCase(),
@@ -164,6 +189,7 @@ export const AuthProvider = ({ children }) => {
         role: 'temp_user',
         isAdmin: false,
         joinedAt: new Date().toISOString(),
+        expiresAt: matchedCode.expiresAt || null,
       };
 
       localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(sessionObj));
@@ -175,6 +201,7 @@ export const AuthProvider = ({ children }) => {
         role: 'temp_user',
         isAdmin: false,
         joinedAt: sessionObj.joinedAt,
+        expiresAt: sessionObj.expiresAt,
       };
 
       setUser(tempUserObj);
