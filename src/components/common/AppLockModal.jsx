@@ -4,7 +4,7 @@ import { Lock, Unlock, ShieldCheck, ArrowRight, Eye, EyeOff, X } from 'lucide-re
 const APP_LOCK_PIN_KEY = 'vortex_app_lock_pin';
 const APP_LOCK_BYPASSED_KEY = 'vortex_app_lock_bypassed_session';
 
-export const AppLockModal = ({ onUnlocked }) => {
+export const AppLockModal = ({ isAuthenticated = false, onUnlocked }) => {
   const [isLocked, setIsLocked] = useState(false);
   const [hasPinSet, setHasPinSet] = useState(false);
   const [savedPin, setSavedPin] = useState('');
@@ -15,6 +15,11 @@ export const AppLockModal = ({ onUnlocked }) => {
   const [showPin, setShowPin] = useState(false);
 
   useEffect(() => {
+    if (!isAuthenticated) {
+      setIsLocked(false);
+      return;
+    }
+
     try {
       const storedPin = localStorage.getItem(APP_LOCK_PIN_KEY);
       const isBypassed = sessionStorage.getItem(APP_LOCK_BYPASSED_KEY) === 'true';
@@ -29,7 +34,7 @@ export const AppLockModal = ({ onUnlocked }) => {
     } catch (e) {
       console.warn('App lock load warning:', e);
     }
-  }, []);
+  }, [isAuthenticated]);
 
   const handleUnlock = (e) => {
     if (e) e.preventDefault();
@@ -78,7 +83,7 @@ export const AppLockModal = ({ onUnlocked }) => {
     setIsSettingMode(false);
   };
 
-  if (!isLocked && !isSettingMode) return null;
+  if (!isAuthenticated || (!isLocked && !isSettingMode)) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-fadeIn">

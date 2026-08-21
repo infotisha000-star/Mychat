@@ -63,9 +63,8 @@ export const AuthProvider = ({ children }) => {
       const expTime = new Date(user.expiresAt).getTime();
       if (Date.now() >= expTime) {
         logout();
-        alert('Your access code session has expired. You have been automatically logged out.');
       }
-    }, 5000);
+    }, 3000);
 
     return () => clearInterval(checkInterval);
   }, [user]);
@@ -213,6 +212,9 @@ export const AuthProvider = ({ children }) => {
 
   const logout = async () => {
     localStorage.removeItem(SESSION_STORAGE_KEY);
+    try {
+      sessionStorage.removeItem('vortex_app_lock_bypassed_session');
+    } catch (e) {}
     setUser(null);
   };
 

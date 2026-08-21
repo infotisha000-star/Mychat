@@ -143,7 +143,7 @@ export const App = () => {
       )}
 
       {/* Optional Passcode PWA App Lock */}
-      <AppLockModal />
+      <AppLockModal isAuthenticated={!!user} />
     </div>
   );
 };
