@@ -31,25 +31,31 @@ export const AuthProvider = ({ children }) => {
       if (storedSession) {
         const parsedSession = JSON.parse(storedSession);
 
-        // If code has already expired before app start, purge session
-        if (parsedSession.expiresAt && new Date(parsedSession.expiresAt).getTime() <= Date.now()) {
+        // Validate session structure & expiration
+        const expMs = parsedSession.expiresAt ? new Date(parsedSession.expiresAt).getTime() : null;
+        const isExpired = expMs && !isNaN(expMs) && expMs <= Date.now();
+
+        if (isExpired || !parsedSession.sessionId || (!parsedSession.code && !parsedSession.isAdmin)) {
           localStorage.removeItem(SESSION_STORAGE_KEY);
           setUser(null);
         } else {
           setUser({
             uid: parsedSession.sessionId,
-            userName: parsedSession.userName,
-            code: parsedSession.code,
+            userName: parsedSession.userName || 'User',
+            code: parsedSession.code || 'JOINED',
             role: parsedSession.role || 'temp_user',
             isAdmin: parsedSession.isAdmin || false,
-            joinedAt: parsedSession.joinedAt,
+            joinedAt: parsedSession.joinedAt || new Date().toISOString(),
             expiresAt: parsedSession.expiresAt || null,
           });
         }
+      } else {
+        setUser(null);
       }
     } catch (e) {
-      console.error('Error restoring session:', e);
+      console.warn('Error restoring session:', e);
       localStorage.removeItem(SESSION_STORAGE_KEY);
+      setUser(null);
     } finally {
       setLoading(false);
     }
@@ -61,10 +67,10 @@ export const AuthProvider = ({ children }) => {
 
     const checkInterval = setInterval(() => {
       const expTime = new Date(user.expiresAt).getTime();
-      if (Date.now() >= expTime) {
+      if (isNaN(expTime) || Date.now() >= expTime) {
         logout();
       }
-    }, 3000);
+    }, 2000);
 
     return () => clearInterval(checkInterval);
   }, [user]);
