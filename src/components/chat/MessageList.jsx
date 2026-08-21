@@ -1,11 +1,11 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { MessageItem } from './MessageItem';
 import { Skeleton } from '../ui/Skeleton';
 import { useChat } from '../../context/ChatContext';
 import { useToast } from '../../context/ToastContext';
-import { ArrowDown, MessageSquare, Trash2, X, CheckSquare, Square } from 'lucide-react';
+import { ArrowDown, MessageSquare, Trash2, X } from 'lucide-react';
 
-export const MessageList = ({
+export const MessageList = React.memo(({
   messages = [],
   loading = false,
   currentUser = null,
@@ -17,7 +17,7 @@ export const MessageList = ({
   onOpenImage,
   onOpenVideo,
 }) => {
-  const { deleteMultipleMessages } = useChat();
+  const { deleteMultipleMessages, toggleReaction } = useChat();
   const toast = useToast();
 
   const containerRef = useRef(null);
@@ -28,32 +28,32 @@ export const MessageList = ({
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState(new Set());
 
-  const scrollToBottom = (smooth = true) => {
+  const scrollToBottom = useCallback((smooth = true) => {
     bottomRef.current?.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto' });
-  };
+  }, []);
 
   useEffect(() => {
     if (!isSelectionMode) {
       scrollToBottom(false);
     }
-  }, [messages.length, isSelectionMode]);
+  }, [messages.length, isSelectionMode, scrollToBottom]);
 
-  const handleScroll = () => {
+  const handleScroll = useCallback(() => {
     if (!containerRef.current) return;
     const { scrollTop, scrollHeight, clientHeight } = containerRef.current;
     const isUp = scrollHeight - scrollTop - clientHeight > 150;
     setShowScrollBottom(isUp);
-  };
+  }, []);
 
   // Start selection mode from a message
-  const handleStartSelectionMode = (initialId) => {
+  const handleStartSelectionMode = useCallback((initialId) => {
     setIsSelectionMode(true);
     setSelectedIds(new Set([initialId]));
     toast.info('Selection mode activated. Tap messages to select.');
-  };
+  }, [toast]);
 
   // Toggle selection for a message ID
-  const handleToggleSelect = (id) => {
+  const handleToggleSelect = useCallback((id) => {
     setSelectedIds((prev) => {
       const updated = new Set(prev);
       if (updated.has(id)) {
@@ -63,16 +63,16 @@ export const MessageList = ({
       }
       return updated;
     });
-  };
+  }, []);
 
   // Select All messages
-  const handleSelectAll = () => {
+  const handleSelectAll = useCallback(() => {
     const allIds = messages.filter((m) => !m.deleted).map((m) => m.id);
     setSelectedIds(new Set(allIds));
-  };
+  }, [messages]);
 
   // Bulk Delete Action
-  const handleBulkDelete = () => {
+  const handleBulkDelete = useCallback(() => {
     const count = selectedIds.size;
     if (count === 0) return;
 
@@ -82,12 +82,12 @@ export const MessageList = ({
       setIsSelectionMode(false);
       setSelectedIds(new Set());
     }
-  };
+  }, [selectedIds, deleteMultipleMessages, toast]);
 
-  const handleCancelSelection = () => {
+  const handleCancelSelection = useCallback(() => {
     setIsSelectionMode(false);
     setSelectedIds(new Set());
-  };
+  }, []);
 
   if (loading) {
     return (
@@ -170,6 +170,7 @@ export const MessageList = ({
             onEdit={onEdit}
             onDelete={onDelete}
             onPin={onPin}
+            onToggleReaction={toggleReaction}
             onOpenImage={onOpenImage}
             onOpenVideo={onOpenVideo}
           />
@@ -188,4 +189,5 @@ export const MessageList = ({
       </div>
     </div>
   );
-};
+});
+

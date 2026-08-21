@@ -23,13 +23,20 @@ import {
 } from 'lucide-react';
 
 const QUICK_EMOJIS = ['👍', '❤️', '🔥', '😂', '😮', '😢', '👏', '🎉'];
+const COMPOSER_DRAFT_KEY = 'vortex_composer_draft';
 
 export const MessageComposer = ({ replyTo = null, onCancelReply }) => {
   const { sendMessage } = useChat();
   const { uploadMediaFiles, uploading, uploadProgress } = useAppwriteUpload();
   const toast = useToast();
 
-  const [text, setText] = useState('');
+  const [text, setText] = useState(() => {
+    try {
+      return localStorage.getItem(COMPOSER_DRAFT_KEY) || '';
+    } catch {
+      return '';
+    }
+  });
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showFormatToolbar, setShowFormatToolbar] = useState(false);
@@ -37,12 +44,32 @@ export const MessageComposer = ({ replyTo = null, onCancelReply }) => {
   const [selectionRange, setSelectionRange] = useState({ start: 0, end: 0 });
   const [sending, setSending] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
 
   const textareaRef = useRef(null);
   const fileInputRef = useRef(null);
 
+  useEffect(() => {
+    const handleOnline = () => setIsOffline(false);
+    const handleOffline = () => setIsOffline(true);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
   const handleTextChange = (e) => {
-    setText(e.target.value);
+    const val = e.target.value;
+    setText(val);
+    try {
+      localStorage.setItem(COMPOSER_DRAFT_KEY, val);
+    } catch (err) {
+      console.warn('Draft save notice:', err);
+    }
+
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
       textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 120)}px`;
@@ -149,6 +176,9 @@ export const MessageComposer = ({ replyTo = null, onCancelReply }) => {
       });
 
       setText('');
+      try {
+        localStorage.removeItem(COMPOSER_DRAFT_KEY);
+      } catch (e) {}
       handleClearAllFiles();
       setShowSelectionMenu(false);
       setIsFocused(false);
@@ -166,6 +196,12 @@ export const MessageComposer = ({ replyTo = null, onCancelReply }) => {
 
   return (
     <div className="msg-composer bg-slate-900/95 border-t border-slate-800 flex flex-col shrink-0 relative z-20 transition-colors duration-300">
+      {/* Offline Status Alert Banner */}
+      {isOffline && (
+        <div className="bg-amber-950/90 border-b border-amber-500/40 px-4 py-1.5 flex items-center justify-between text-xs text-amber-200">
+          <span>⚡ Offline Mode: Messages & drafts will auto-sync when connected.</span>
+        </div>
+      )}
       {/* Reply Reference Header */}
       {replyTo && (
         <div className="bg-slate-950/80 dark:bg-slate-950/80 light:bg-indigo-50 px-4 py-2 border-b border-indigo-500/30 flex items-center justify-between text-xs">
@@ -385,38 +421,38 @@ export const MessageComposer = ({ replyTo = null, onCancelReply }) => {
               animate={{ opacity: 1, width: 'auto', scale: 1 }}
               exit={{ opacity: 0, width: 0, scale: 0.8 }}
               transition={{ duration: 0.2, ease: 'easeInOut' }}
-              className="flex items-center gap-2 overflow-hidden shrink-0"
+              className="flex items-center gap-1.5 overflow-hidden shrink-0"
             >
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={uploading || sending}
-                className="composer-btn p-2.5 rounded-xl bg-slate-800/80 border border-slate-700/80 transition-colors shrink-0 flex items-center justify-center"
+                className="composer-btn w-10 h-10 rounded-full bg-slate-800/80 border border-slate-700/80 hover:bg-slate-700 hover:text-white transition-all active:scale-95 shrink-0 flex items-center justify-center text-slate-300 shadow-sm"
                 title="Attach photos/videos"
               >
-                <Paperclip className="w-5 h-5" />
+                <Paperclip className="w-4 h-4" />
               </button>
 
               <button
                 type="button"
                 onClick={() => setShowFormatToolbar(!showFormatToolbar)}
-                className={`p-2.5 rounded-xl transition-colors shrink-0 flex items-center justify-center ${
+                className={`w-10 h-10 rounded-full transition-all active:scale-95 shrink-0 flex items-center justify-center shadow-sm ${
                   showFormatToolbar
-                    ? 'bg-indigo-600 text-white'
-                    : 'composer-btn bg-slate-800/80 border border-slate-700/80'
+                    ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-indigo-600/40'
+                    : 'composer-btn bg-slate-800/80 border border-slate-700/80 text-slate-300 hover:text-white'
                 }`}
                 title="Formatting Menu"
               >
-                <Type className="w-5 h-5" />
+                <Type className="w-4 h-4" />
               </button>
 
               <button
                 type="button"
                 onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                className="composer-btn p-2.5 rounded-xl bg-slate-800/80 border border-slate-700/80 transition-colors shrink-0 flex items-center justify-center"
+                className="composer-btn w-10 h-10 rounded-full bg-slate-800/80 border border-slate-700/80 hover:bg-slate-700 hover:text-white transition-all active:scale-95 shrink-0 flex items-center justify-center text-slate-300 shadow-sm"
                 title="Emoji"
               >
-                <Smile className="w-5 h-5" />
+                <Smile className="w-4 h-4" />
               </button>
             </motion.div>
           ) : (
@@ -430,7 +466,7 @@ export const MessageComposer = ({ replyTo = null, onCancelReply }) => {
               <button
                 type="button"
                 onClick={() => setIsFocused(false)}
-                className="composer-btn p-2.5 rounded-xl bg-slate-800/80 border border-slate-700/80 transition-colors shrink-0 flex items-center justify-center text-indigo-500"
+                className="composer-btn w-10 h-10 rounded-full bg-slate-800/80 border border-slate-700/80 transition-all active:scale-95 shrink-0 flex items-center justify-center text-indigo-400 shadow-sm"
                 title="Show actions"
               >
                 <Plus className="w-5 h-5" />
@@ -439,7 +475,7 @@ export const MessageComposer = ({ replyTo = null, onCancelReply }) => {
           )}
         </AnimatePresence>
 
-        {/* Textarea */}
+        {/* Messenger Rounded Input Textarea */}
         <textarea
           ref={textareaRef}
           rows={1}
@@ -455,21 +491,21 @@ export const MessageComposer = ({ replyTo = null, onCancelReply }) => {
           onMouseUp={handleSelectText}
           onTouchEnd={handleSelectText}
           onKeyDown={handleKeyDown}
-          placeholder="Type a message..."
-          className="msg-input flex-1 bg-slate-950 border border-slate-800 rounded-2xl px-4 py-3 text-sm text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 resize-none max-h-32 transition-all scrollbar-none overflow-hidden"
+          placeholder="Message..."
+          className="msg-input flex-1 bg-slate-950 border border-slate-800/90 rounded-[22px] px-4 py-2.5 text-sm text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 resize-none max-h-32 transition-all scrollbar-none overflow-hidden shadow-inner"
         />
 
-        {/* Dedicated Send Button (No Mic Toggle) */}
+        {/* Messenger Circular Glowing Send Button */}
         <button
           type="submit"
           disabled={sending || uploading || !canSend}
-          className="p-3 rounded-2xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white shadow-lg shadow-indigo-600/30 disabled:opacity-40 disabled:cursor-not-allowed transition-all shrink-0 active:scale-95 flex items-center justify-center"
+          className="w-10 h-10 rounded-full bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 hover:from-blue-500 hover:to-violet-500 text-white shadow-lg shadow-indigo-600/35 disabled:opacity-35 disabled:cursor-not-allowed transition-all shrink-0 active:scale-90 flex items-center justify-center"
           title="Send Message"
         >
           {sending || uploading ? (
-            <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
           ) : (
-            <Send className="w-5 h-5" />
+            <Send className="w-4 h-4 ml-0.5" />
           )}
         </button>
       </form>

@@ -3,12 +3,14 @@
 @tailwind utilities;
 
 @layer base {
-  html {
+  html, body, #root {
     height: 100%;
     height: 100dvh;
     overflow: hidden;
     font-family: 'Inter', sans-serif;
     -webkit-tap-highlight-color: transparent;
+    -webkit-overflow-scrolling: touch;
+    touch-action: manipulation;
     transition: background-color 0.3s ease, color 0.3s ease;
   }
 
@@ -23,6 +25,12 @@
     background-color: #f1f5f9;
     color: #0f172a;
   }
+}
+
+/* Mobile PWA Performance Touch Scroll */
+.overflow-y-auto {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
 }
 
 /* Telegram Style Clean Light Mode Styles */

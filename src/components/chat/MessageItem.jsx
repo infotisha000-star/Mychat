@@ -4,7 +4,6 @@ import { renderFormattedText } from '../../utils/textFormatter';
 import { formatTimeAgo, formatClockTime } from '../../utils/timeAgo';
 import { MediaGallery } from './MediaGallery';
 import { useToast } from '../../context/ToastContext';
-import { useChat } from '../../context/ChatContext';
 import confetti from 'canvas-confetti';
 import { 
   Copy, 
@@ -24,7 +23,7 @@ import { Button } from '../ui/Button';
 
 const REACTION_EMOJIS = ['👍', '❤️', '🔥', '😂', '😮', '😢', '👏', '🎉'];
 
-export const MessageItem = ({
+export const MessageItem = React.memo(({
   message,
   currentUser,
   isAdmin,
@@ -36,12 +35,12 @@ export const MessageItem = ({
   onEdit,
   onDelete,
   onPin,
+  onToggleReaction,
   onOpenImage,
   onOpenVideo,
   onScrollToMessage,
 }) => {
   const toast = useToast();
-  const { toggleReaction } = useChat();
   
   const [showContextMenu, setShowContextMenu] = useState(false);
   const [openUpwards, setOpenUpwards] = useState(false);
@@ -135,7 +134,7 @@ export const MessageItem = ({
   };
 
   const handleSelectReaction = (emoji) => {
-    toggleReaction(message.id, emoji);
+    if (onToggleReaction) onToggleReaction(message.id, emoji);
     confetti({ particleCount: 25, spread: 50, origin: { y: 0.7 } });
     setShowContextMenu(false);
   };
@@ -179,6 +178,7 @@ export const MessageItem = ({
   return (
     <div 
       id={`msg-${message.id}`} 
+      style={{ contentVisibility: 'auto', containIntrinsicSize: '0 60px' }}
       className={`group relative flex items-center gap-3 my-1.5 ${isMe ? 'flex-row-reverse' : 'flex-row'} max-w-full select-none`}
     >
       {/* Selection Checkbox */}
@@ -197,11 +197,25 @@ export const MessageItem = ({
         </button>
       )}
 
+      {/* Received Message Messenger Avatar Pill */}
+      {!isMe && (
+        <div 
+          className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-[11px] text-white shadow-md shrink-0 self-end mb-1 select-none ${
+            isMessageAdmin
+              ? 'bg-gradient-to-tr from-amber-500 to-indigo-600 ring-1 ring-amber-400/50'
+              : 'bg-gradient-to-tr from-indigo-600 to-violet-600 ring-1 ring-indigo-400/30'
+          }`}
+          title={message.senderName}
+        >
+          {message.senderName?.charAt(0)?.toUpperCase() || 'U'}
+        </div>
+      )}
+
       <div className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} max-w-full flex-1`}>
         {/* Sender Header */}
         <div className="flex items-center gap-1.5 mb-1 px-1 text-[11px] text-slate-500 dark:text-slate-400">
           {isMessageAdmin ? (
-            <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-950/80 border border-indigo-300 dark:border-indigo-500/40 text-indigo-700 dark:text-indigo-300 font-bold">
+            <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-indigo-100 dark:bg-indigo-950/80 border border-indigo-300 dark:border-indigo-500/40 text-indigo-700 dark:text-indigo-300 font-bold text-[10px]">
               <ShieldCheck className="w-3 h-3 text-indigo-600 dark:text-indigo-400" />
               <span>ADMIN</span>
             </span>
@@ -220,7 +234,7 @@ export const MessageItem = ({
           )}
         </div>
 
-        {/* Main Message Bubble */}
+        {/* Main Messenger Rounded Message Bubble */}
         <div
           ref={bubbleRef}
           onClick={handleBubbleClick}
@@ -230,14 +244,14 @@ export const MessageItem = ({
           onTouchEnd={handlePressEnd}
           onTouchMove={handlePressEnd}
           onContextMenu={handleContextMenu}
-          className={`relative max-w-[88%] sm:max-w-[75%] rounded-2xl px-4 py-3 shadow-md text-sm cursor-pointer transition-all active:scale-[0.99] ${
-            isSelected ? 'ring-2 ring-indigo-500' : ''
+          className={`relative max-w-[88%] sm:max-w-[78%] px-4 py-2.5 text-sm cursor-pointer transition-all duration-150 active:scale-[0.98] ${
+            isSelected ? 'ring-2 ring-indigo-500 shadow-xl' : ''
           } ${
             isMe
-              ? 'msg-bubble-sent bg-gradient-to-r from-indigo-600 to-indigo-700 text-white rounded-tr-xs border border-indigo-500/30'
+              ? 'msg-bubble-sent bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 text-white rounded-[22px] rounded-br-[5px] shadow-md shadow-indigo-600/25 border border-indigo-400/20'
               : isMessageAdmin
-              ? 'msg-bubble-admin bg-slate-900 border border-indigo-500/40 text-slate-100 rounded-tl-xs shadow-indigo-950/40'
-              : 'msg-bubble-received bg-slate-900/90 border border-slate-800 text-slate-100 rounded-tl-xs'
+              ? 'msg-bubble-admin bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 border border-indigo-500/50 text-slate-100 rounded-[22px] rounded-bl-[5px] shadow-lg shadow-indigo-950/40'
+              : 'msg-bubble-received bg-slate-900/95 dark:bg-slate-900 border border-slate-800 text-slate-100 rounded-[22px] rounded-bl-[5px] shadow-sm'
           }`}
         >
           {/* Reply Reference */}
@@ -292,7 +306,7 @@ export const MessageItem = ({
               return (
                 <button
                   key={emoji}
-                  onClick={() => toggleReaction(message.id, emoji)}
+                  onClick={() => onToggleReaction && onToggleReaction(message.id, emoji)}
                   className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border transition-all ${
                     hasReacted
                       ? 'bg-indigo-100 dark:bg-indigo-950 border-indigo-300 dark:border-indigo-500/60 text-indigo-700 dark:text-indigo-200 shadow-xs'
@@ -489,4 +503,5 @@ export const MessageItem = ({
       </Modal>
     </div>
   );
-};
+});
+

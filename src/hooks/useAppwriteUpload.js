@@ -79,16 +79,22 @@ export const useAppwriteUpload = () => {
           appwriteErr
         );
 
-        // 2. Fail-safe Fallback: Read as DataURL so media upload ALWAYS succeeds in dev/testing mode!
-        const dataUrl = await readFileAsDataURL(processedFile);
+        // 2. Fail-safe Fallback: Use URL.createObjectURL or compressed DataURL so media upload ALWAYS succeeds cleanly without bloat!
+        let fallbackUrl = '';
+        if (isImage) {
+          fallbackUrl = await readFileAsDataURL(processedFile);
+        } else {
+          fallbackUrl = URL.createObjectURL(processedFile);
+        }
+
         mediaMeta = {
           fileId: `local_${Date.now()}_${i}`,
           bucketId: APPWRITE_BUCKET_ID,
           name: file.name,
           size: processedFile.size,
           type: file.type,
-          url: dataUrl,
-          thumbnail: isImage ? dataUrl : null,
+          url: fallbackUrl,
+          thumbnail: isImage ? fallbackUrl : null,
           isAppwrite: false,
         };
       }

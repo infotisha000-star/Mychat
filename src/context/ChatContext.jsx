@@ -1,6 +1,8 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from './AuthContext';
 import { db, rtdb, collection, doc, setDoc, deleteDoc, onSnapshot, ref, set, onValue } from '../services/firebase';
+import { playSendSound, playReceiveSound } from '../utils/soundEffects';
+import { sendIncomingMessageNotification, requestNotificationPermission } from '../services/notificationService';
 
 const ChatContext = createContext(null);
 
@@ -24,6 +26,14 @@ export const ChatProvider = ({ children }) => {
   const [searchQuery, setSearchQuery] = useState('');
 
   const [broadcastChannel, setBroadcastChannel] = useState(null);
+  const isInitialMount = useRef(true);
+
+  // Request Notification permission on user login
+  useEffect(() => {
+    if (user) {
+      requestNotificationPermission();
+    }
+  }, [user]);
 
   // Sync BroadcastChannel locally
   useEffect(() => {
@@ -46,6 +56,15 @@ export const ChatProvider = ({ children }) => {
     setPinnedMessages(messages.filter((m) => m.pinned && !m.deleted));
   }, [messages]);
 
+  // Listen for online reconnection to auto-sync state
+  useEffect(() => {
+    const handleOnlineSync = () => {
+      loadStateFromStorage();
+    };
+    window.addEventListener('online', handleOnlineSync);
+    return () => window.removeEventListener('online', handleOnlineSync);
+  }, []);
+
   // Dual Realtime Stream Listener (Cloud Firestore + Realtime Database)
   useEffect(() => {
     let unsubFirestore = null;
@@ -54,14 +73,43 @@ export const ChatProvider = ({ children }) => {
     const mergeAndSetMessages = (newList) => {
       setMessages((prev) => {
         const msgMap = new Map();
+        const prevIds = new Set(prev.map((m) => m.id));
+
         // Keep existing
         prev.forEach((m) => m && m.id && msgMap.set(m.id, m));
+        
+        let hasIncomingNewMessage = false;
+        let incomingMsgObj = null;
+
         // Merge new
-        newList.forEach((m) => m && m.id && msgMap.set(m.id, m));
+        newList.forEach((m) => {
+          if (m && m.id) {
+            if (!prevIds.has(m.id) && m.senderId !== user?.uid && !isInitialMount.current) {
+              hasIncomingNewMessage = true;
+              incomingMsgObj = m;
+            }
+            msgMap.set(m.id, m);
+          }
+        });
 
         const merged = Array.from(msgMap.values());
         merged.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
         localStorage.setItem(MESSAGES_KEY, JSON.stringify(merged));
+
+        // Play audio chime and display notification for incoming message
+        if (hasIncomingNewMessage && incomingMsgObj) {
+          playReceiveSound();
+          sendIncomingMessageNotification({
+            senderName: incomingMsgObj.senderName,
+            text: incomingMsgObj.text,
+            media: incomingMsgObj.media,
+          });
+        }
+
+        if (isInitialMount.current && merged.length > 0) {
+          isInitialMount.current = false;
+        }
+
         return merged;
       });
       setLoadingMessages(false);
@@ -156,14 +204,14 @@ export const ChatProvider = ({ children }) => {
     }
   }, []);
 
-  const notifySync = () => {
+  const notifySync = useCallback(() => {
     if (broadcastChannel) {
       broadcastChannel.postMessage({ type: 'SYNC_STATE' });
     }
-  };
+  }, [broadcastChannel]);
 
   // Instant Non-blocking Send Message (Writes to Firestore + RTDB)
-  const sendMessage = async ({ text = '', media = [], replyTo = null }) => {
+  const sendMessage = useCallback(async ({ text = '', media = [], replyTo = null }) => {
     if (!user) throw new Error('Not authenticated');
     if (!text.trim() && media.length === 0) {
       throw new Error('Please enter a message or attach media files.');
@@ -205,6 +253,7 @@ export const ChatProvider = ({ children }) => {
 
     // 1. Instant local state update (0ms delay!)
     setMessages((prev) => [...prev, newMessage]);
+    playSendSound();
 
     try {
       const stored = localStorage.getItem(MESSAGES_KEY);
@@ -220,10 +269,10 @@ export const ChatProvider = ({ children }) => {
 
     notifySync();
     return newMessage.id;
-  };
+  }, [user, notifySync]);
 
   // Instant Non-blocking Reaction Toggle
-  const toggleReaction = async (messageId, emoji) => {
+  const toggleReaction = useCallback(async (messageId, emoji) => {
     if (!user) return;
     const userId = user.uid;
 
@@ -254,10 +303,10 @@ export const ChatProvider = ({ children }) => {
     }
 
     notifySync();
-  };
+  }, [user, notifySync]);
 
   // Instant Non-blocking Edit Message (Admin or Message Owner)
-  const editMessage = async (messageId, newText) => {
+  const editMessage = useCallback(async (messageId, newText) => {
     if (!user) throw new Error('Not authenticated');
 
     let editedMsgObj = null;
@@ -286,10 +335,10 @@ export const ChatProvider = ({ children }) => {
     }
 
     notifySync();
-  };
+  }, [user, notifySync]);
 
   // Instant Non-blocking Soft Delete (Admin or Message Owner)
-  const deleteMessage = async (messageId) => {
+  const deleteMessage = useCallback(async (messageId) => {
     if (!user) throw new Error('Not authenticated');
 
     let deletedMsgObj = null;
@@ -313,10 +362,10 @@ export const ChatProvider = ({ children }) => {
     }
 
     notifySync();
-  };
+  }, [user, notifySync]);
 
   // Bulk Delete
-  const deleteMultipleMessages = async (messageIds = []) => {
+  const deleteMultipleMessages = useCallback(async (messageIds = []) => {
     if (!user || messageIds.length === 0) return;
 
     const idsSet = new Set(messageIds);
@@ -337,26 +386,27 @@ export const ChatProvider = ({ children }) => {
     );
 
     notifySync();
-  };
+  }, [user, notifySync]);
 
   // Admin Master Clear All Messages
-  const clearAllMessages = async () => {
+  const clearAllMessages = useCallback(async () => {
     if (!user || !user.isAdmin) return;
 
-    const allIds = messages.map((m) => m.id);
-    setMessages([]);
+    setMessages((prev) => {
+      const allIds = prev.map((m) => m.id);
+      allIds.forEach((id) => {
+        setDoc(doc(db, 'messages', id), { deleted: true, deletedAt: new Date().toISOString() }, { merge: true }).catch(console.warn);
+        set(ref(rtdb, `messages/${id}/deleted`), true).catch(console.warn);
+      });
+      return [];
+    });
     localStorage.setItem(MESSAGES_KEY, JSON.stringify([]));
 
-    allIds.forEach((id) => {
-      setDoc(doc(db, 'messages', id), { deleted: true, deletedAt: new Date().toISOString() }, { merge: true }).catch(console.warn);
-      set(ref(rtdb, `messages/${id}/deleted`), true).catch(console.warn);
-    });
-
     notifySync();
-  };
+  }, [user, notifySync]);
 
   // Instant Non-blocking Toggle Pin
-  const togglePinMessage = async (messageId) => {
+  const togglePinMessage = useCallback(async (messageId) => {
     if (!user) throw new Error('Not authenticated');
 
     let pinnedObj = null;
@@ -381,36 +431,53 @@ export const ChatProvider = ({ children }) => {
     }
 
     notifySync();
-  };
+  }, [user, notifySync]);
 
   // Filter messages by search query
-  const filteredMessages = searchQuery.trim()
-    ? messages.filter((m) =>
-        m.text?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        m.senderName?.toLowerCase().includes(searchQuery.toLowerCase())
-      )
-    : messages;
+  const filteredMessages = React.useMemo(() => {
+    return searchQuery.trim()
+      ? messages.filter((m) =>
+          m.text?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          m.senderName?.toLowerCase().includes(searchQuery.toLowerCase())
+        )
+      : messages;
+  }, [messages, searchQuery]);
+
+  const value = React.useMemo(() => ({
+    messages: filteredMessages,
+    allMessages: messages,
+    pinnedMessages,
+    activeUsers,
+    loadingMessages,
+    searchQuery,
+    setSearchQuery,
+    sendMessage,
+    toggleReaction,
+    editMessage,
+    deleteMessage,
+    deleteMultipleMessages,
+    clearAllMessages,
+    togglePinMessage,
+    loadStateFromStorage,
+  }), [
+    filteredMessages,
+    messages,
+    pinnedMessages,
+    activeUsers,
+    loadingMessages,
+    searchQuery,
+    sendMessage,
+    toggleReaction,
+    editMessage,
+    deleteMessage,
+    deleteMultipleMessages,
+    clearAllMessages,
+    togglePinMessage,
+    loadStateFromStorage,
+  ]);
 
   return (
-    <ChatContext.Provider
-      value={{
-        messages: filteredMessages,
-        allMessages: messages,
-        pinnedMessages,
-        activeUsers,
-        loadingMessages,
-        searchQuery,
-        setSearchQuery,
-        sendMessage,
-        toggleReaction,
-        editMessage,
-        deleteMessage,
-        deleteMultipleMessages,
-        clearAllMessages,
-        togglePinMessage,
-        loadStateFromStorage,
-      }}
-    >
+    <ChatContext.Provider value={value}>
       {children}
     </ChatContext.Provider>
   );

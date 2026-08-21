@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { useAuth } from './context/AuthContext';
 import { useChat } from './context/ChatContext';
 
@@ -13,6 +13,7 @@ import { TypingIndicator } from './components/chat/TypingIndicator';
 import { LightboxViewer } from './components/chat/LightboxViewer';
 import { VideoPlayerModal } from './components/chat/VideoPlayerModal';
 import { AdminDashboard } from './components/admin/AdminDashboard';
+import { AppLockModal } from './components/common/AppLockModal';
 
 export const App = () => {
   const { user, loading: authLoading, isAdmin } = useAuth();
@@ -30,6 +31,43 @@ export const App = () => {
   const [modalVideo, setModalVideo] = useState(null);
   const [isAdminDashboardOpen, setIsAdminDashboardOpen] = useState(false);
 
+  const handleReply = useCallback((msg) => {
+    setReplyTarget(msg);
+  }, []);
+
+  const handleCancelReply = useCallback(() => {
+    setReplyTarget(null);
+  }, []);
+
+  const handleOpenImage = useCallback((url) => {
+    setLightboxImage(url);
+  }, []);
+
+  const handleOpenVideo = useCallback((url) => {
+    setModalVideo(url);
+  }, []);
+
+  const handleCloseLightbox = useCallback(() => {
+    setLightboxImage(null);
+  }, []);
+
+  const handleCloseVideoModal = useCallback(() => {
+    setModalVideo(null);
+  }, []);
+
+  const handleOpenAdminDashboard = useCallback(() => {
+    setIsAdminDashboardOpen(true);
+  }, []);
+
+  const handleCloseAdminDashboard = useCallback(() => {
+    setIsAdminDashboardOpen(false);
+  }, []);
+
+  const handleScrollToMessage = useCallback((id) => {
+    const el = document.getElementById(`msg-${id}`);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, []);
+
   if (authLoading) {
     return <LoadingScreen message="Verifying user session..." />;
   }
@@ -46,15 +84,12 @@ export const App = () => {
       ) : (
         <div className="app-container relative z-10 flex flex-col h-full h-[100dvh] w-full max-w-4xl mx-auto bg-slate-900/80 text-slate-100 shadow-2xl overflow-hidden border-x border-slate-800/60 backdrop-blur-md transition-colors duration-300">
           {/* Top Header */}
-          <ChatHeader onOpenAdminDashboard={() => setIsAdminDashboardOpen(true)} />
+          <ChatHeader onOpenAdminDashboard={handleOpenAdminDashboard} />
 
           {/* Pinned Messages Header Banner */}
           <PinnedBanner
             pinnedMessages={pinnedMessages}
-            onScrollToMessage={(id) => {
-              const el = document.getElementById(`msg-${id}`);
-              if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            }}
+            onScrollToMessage={handleScrollToMessage}
             onUnpinMessage={togglePinMessage}
             isAdmin={isAdmin}
           />
@@ -65,12 +100,12 @@ export const App = () => {
             loading={loadingMessages}
             currentUser={user}
             isAdmin={isAdmin}
-            onReply={(msg) => setReplyTarget(msg)}
+            onReply={handleReply}
             onEdit={editMessage}
             onDelete={deleteMessage}
             onPin={togglePinMessage}
-            onOpenImage={(url) => setLightboxImage(url)}
-            onOpenVideo={(url) => setModalVideo(url)}
+            onOpenImage={handleOpenImage}
+            onOpenVideo={handleOpenVideo}
           />
 
           {/* Typing Indicator */}
@@ -81,31 +116,35 @@ export const App = () => {
           {/* Message Composer Bar */}
           <MessageComposer
             replyTo={replyTarget}
-            onCancelReply={() => setReplyTarget(null)}
+            onCancelReply={handleCancelReply}
           />
 
           {/* Media Lightbox & Video Player Modals */}
           <LightboxViewer
             isOpen={!!lightboxImage}
             imageUrl={lightboxImage}
-            onClose={() => setLightboxImage(null)}
+            onClose={handleCloseLightbox}
           />
 
           <VideoPlayerModal
             isOpen={!!modalVideo}
             videoUrl={modalVideo}
-            onClose={() => setModalVideo(null)}
+            onClose={handleCloseVideoModal}
           />
 
           {/* Admin Control Center Dashboard */}
           {isAdmin && (
             <AdminDashboard
               isOpen={isAdminDashboardOpen}
-              onClose={() => setIsAdminDashboardOpen(false)}
+              onClose={handleCloseAdminDashboard}
             />
           )}
         </div>
       )}
+
+      {/* Optional Passcode PWA App Lock */}
+      <AppLockModal />
     </div>
   );
 };
+
