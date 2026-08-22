@@ -3,13 +3,14 @@ import { useAuth } from '../../context/AuthContext';
 import { useChat } from '../../context/ChatContext';
 import { useTheme } from '../../context/ThemeContext';
 import { AppLogo } from '../common/AppLogo';
-import { Users, LogOut, ShieldCheck, Key, Search, X, Sun, Moon } from 'lucide-react';
+import { Users, LogOut, ShieldCheck, Key, Search, X, Sun, Moon, Palette, Check } from 'lucide-react';
 
 export const ChatHeader = ({ onOpenAdminDashboard }) => {
   const { user, logout, isAdmin } = useAuth();
   const { activeUsers, searchQuery, setSearchQuery } = useChat();
-  const { isDark, toggleTheme } = useTheme();
+  const { isDark, toggleTheme, bgTheme, setBgTheme, CHAT_BG_THEMES, activeBgThemeObj } = useTheme();
   const [showSearch, setShowSearch] = useState(false);
+  const [showThemePicker, setShowThemePicker] = useState(false);
 
   return (
     <header className="app-header sticky top-0 z-30 bg-slate-900/90 backdrop-blur-md border-b border-slate-800/80 px-2.5 sm:px-4 py-2 flex items-center justify-between shadow-lg shrink-0 transition-colors duration-300 w-full overflow-hidden">
@@ -59,9 +60,70 @@ export const ChatHeader = ({ onOpenAdminDashboard }) => {
             </div>
           </div>
 
-          {/* Right: Action Buttons (Guaranteed No Overflow) */}
-          <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
-            {/* Theme Toggle */}
+          {/* Right: Action Buttons */}
+          <div className="flex items-center gap-1 sm:gap-1.5 shrink-0 relative">
+            {/* Messenger Background Theme Picker Button */}
+            <div className="relative">
+              <button
+                onClick={() => setShowThemePicker((prev) => !prev)}
+                className="app-header-btn p-1.5 sm:p-2 rounded-xl bg-slate-800/80 border border-slate-700/80 transition-transform active:scale-95 flex items-center justify-center shrink-0"
+                style={{ color: activeBgThemeObj?.primaryColor || '#6366f1' }}
+                title="Messenger Background Themes"
+              >
+                <Palette className="w-4 h-4 shrink-0" />
+              </button>
+
+              {/* Theme Picker Dropdown */}
+              {showThemePicker && (
+                <>
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setShowThemePicker(false)}
+                  />
+                  <div className="absolute right-0 top-full mt-2 z-50 w-52 bg-slate-900 border border-slate-700/90 rounded-2xl shadow-2xl p-2.5 flex flex-col gap-2 text-xs text-slate-100 animate-fadeIn">
+                    <div className="px-2 py-1 border-b border-slate-800 flex items-center justify-between text-[11px] font-semibold text-slate-400">
+                      <span>Chat Background Theme</span>
+                      <button
+                        onClick={() => setShowThemePicker(false)}
+                        className="text-slate-400 hover:text-white p-0.5"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    <div className="flex flex-col gap-1.5">
+                      {CHAT_BG_THEMES.map((themeItem) => {
+                        const isSelected = bgTheme === themeItem.id;
+                        return (
+                          <button
+                            key={themeItem.id}
+                            onClick={() => {
+                              setBgTheme(themeItem.id);
+                              setShowThemePicker(false);
+                            }}
+                            className={`flex items-center justify-between px-2.5 py-2 rounded-xl border transition-all text-left ${
+                              isSelected
+                                ? 'bg-slate-800 border-indigo-500/60 font-semibold'
+                                : 'bg-slate-950/60 border-slate-800/80 hover:bg-slate-800/50'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2.5">
+                              <span
+                                className={`w-4 h-4 rounded-full bg-gradient-to-r ${themeItem.gradient} shrink-0 shadow-sm`}
+                              />
+                              <span className="text-slate-200 text-xs">{themeItem.name}</span>
+                            </div>
+                            {isSelected && <Check className="w-3.5 h-3.5 text-indigo-400 shrink-0" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Theme Toggle (Dark/Light) */}
             <button
               onClick={toggleTheme}
               className="app-header-btn p-1.5 sm:p-2 rounded-xl bg-slate-800/80 border border-slate-700/80 transition-transform active:scale-95 flex items-center justify-center shrink-0"

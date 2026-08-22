@@ -21,47 +21,38 @@ const fetchWithTimeout = (promise, ms = 1500) => {
 };
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
-
-  // Restore local session on startup
-  useEffect(() => {
+  // Synchronous 0ms state initialization for instant app entry
+  const [user, setUser] = useState(() => {
     try {
-      const storedSession = localStorage.getItem(SESSION_STORAGE_KEY);
-      if (storedSession) {
-        const parsedSession = JSON.parse(storedSession);
+      if (typeof window !== 'undefined') {
+        const storedSession = localStorage.getItem(SESSION_STORAGE_KEY);
+        if (storedSession) {
+          const parsedSession = JSON.parse(storedSession);
+          const expMs = parsedSession.expiresAt ? new Date(parsedSession.expiresAt).getTime() : null;
+          const isExpired = expMs && !isNaN(expMs) && expMs <= Date.now();
 
-        // Validate session structure & expiration
-        const expMs = parsedSession.expiresAt ? new Date(parsedSession.expiresAt).getTime() : null;
-        const isExpired = expMs && !isNaN(expMs) && expMs <= Date.now();
-
-        if (isExpired || !parsedSession.sessionId || (!parsedSession.code && !parsedSession.isAdmin)) {
-          localStorage.removeItem(SESSION_STORAGE_KEY);
-          setUser(null);
-        } else {
-          setUser({
-            uid: parsedSession.sessionId,
-            userName: parsedSession.userName || 'User',
-            code: parsedSession.code || 'JOINED',
-            role: parsedSession.role || 'temp_user',
-            isAdmin: parsedSession.isAdmin || false,
-            joinedAt: parsedSession.joinedAt || new Date().toISOString(),
-            expiresAt: parsedSession.expiresAt || null,
-          });
+          if (!isExpired && parsedSession.sessionId && (parsedSession.code || parsedSession.isAdmin)) {
+            return {
+              uid: parsedSession.sessionId,
+              userName: parsedSession.userName || (parsedSession.isAdmin ? 'Admin' : 'User'),
+              email: parsedSession.email || (parsedSession.isAdmin ? 'admin@vortex.app' : null),
+              code: parsedSession.code || (parsedSession.isAdmin ? 'ADMIN' : 'JOINED'),
+              role: parsedSession.role || (parsedSession.isAdmin ? 'admin' : 'temp_user'),
+              isAdmin: !!parsedSession.isAdmin,
+              joinedAt: parsedSession.joinedAt || new Date().toISOString(),
+              expiresAt: parsedSession.isAdmin ? null : (parsedSession.expiresAt || null),
+            };
+          }
         }
-      } else {
-        setUser(null);
       }
     } catch (e) {
-      console.warn('Error restoring session:', e);
-      localStorage.removeItem(SESSION_STORAGE_KEY);
-      setUser(null);
-    } finally {
-      setLoading(false);
+      console.warn('Initial session parse notice:', e);
     }
-  }, []);
+    return null;
+  });
+  const [loading, setLoading] = useState(false);
 
-  // Automatic Session Expiry Monitor (Auto Logout when Code Expires)
+  // Automatic Session Expiry Monitor (Auto Logout when Code Expires - Temp Users Only)
   useEffect(() => {
     if (!user || user.isAdmin || !user.expiresAt) return;
 
@@ -75,25 +66,31 @@ export const AuthProvider = ({ children }) => {
     return () => clearInterval(checkInterval);
   }, [user]);
 
-  // Admin login with instant verification
+  // Admin login with instant verification & unique per-device session id
   const adminLogin = async (email, password) => {
     if (!email || !email.trim() || !password || !password.trim()) {
       throw new Error('Please enter both email and password.');
     }
+    const adminSessionId = `admin_sess_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
     const adminUser = {
-      uid: 'admin_session_id',
+      uid: adminSessionId,
       email: email.trim(),
-      displayName: 'Admin',
-      role: 'admin',
-      isAdmin: true,
-    };
-    const sessionObj = {
-      sessionId: adminUser.uid,
       userName: 'Admin',
+      displayName: 'Admin',
       code: 'ADMIN',
       role: 'admin',
       isAdmin: true,
       joinedAt: new Date().toISOString(),
+      expiresAt: null,
+    };
+    const sessionObj = {
+      sessionId: adminSessionId,
+      email: email.trim(),
+      userName: 'Admin',
+      code: 'ADMIN',
+      role: 'admin',
+      isAdmin: true,
+      joinedAt: adminUser.joinedAt,
       expiresAt: null,
     };
     localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(sessionObj));
@@ -101,7 +98,7 @@ export const AuthProvider = ({ children }) => {
     return adminUser;
   };
 
-  // Bulletproof Failsafe Access Code Verification
+  // Cloud-First Parallel Access Code Verification (Firestore + Realtime DB)
   const validateAndJoinWithCode = async (rawCode, userName) => {
     const cleanCode = normalizeCode(rawCode);
     if (!cleanCode) {
@@ -113,11 +110,17 @@ export const AuthProvider = ({ children }) => {
 
     let matchedCode = null;
 
-    // 1. Check Cloud Firestore direct doc
+    // 1. Parallel Cloud Query (Cloud Firestore doc + Cloud RTDB index)
     try {
-      const docSnap = await fetchWithTimeout(getDoc(doc(db, 'accessCodes', cleanCode)), 1500);
-      if (docSnap && docSnap.exists()) {
-        matchedCode = docSnap.data();
+      const [firestoreDocRes, rtdbRes] = await Promise.allSettled([
+        fetchWithTimeout(getDoc(doc(db, 'accessCodes', cleanCode)), 2000),
+        fetchWithTimeout(get(ref(rtdb, `codes_index/${cleanCode}`)), 2000),
+      ]);
+
+      if (firestoreDocRes.status === 'fulfilled' && firestoreDocRes.value && firestoreDocRes.value.exists()) {
+        matchedCode = firestoreDocRes.value.data();
+      } else if (rtdbRes.status === 'fulfilled' && rtdbRes.value && rtdbRes.value.exists()) {
+        matchedCode = rtdbRes.value.val();
       }
     } catch (e) {}
 
@@ -186,6 +189,9 @@ export const AuthProvider = ({ children }) => {
       setDoc(doc(db, 'accessCodes', matchedCode.id || cleanCode), { currentUses: newUses, assignedUserName: userName.trim() }, { merge: true }).catch(console.warn);
       set(ref(rtdb, `accessCodes/${matchedCode.id || cleanCode}/currentUses`), newUses).catch(console.warn);
 
+      // Clear any prior stale session before establishing new session
+      localStorage.removeItem(SESSION_STORAGE_KEY);
+
       // Create local user session with expiration
       const sessionObj = {
         sessionId: `sess_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
@@ -217,8 +223,8 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = async () => {
-    localStorage.removeItem(SESSION_STORAGE_KEY);
     try {
+      localStorage.removeItem(SESSION_STORAGE_KEY);
       sessionStorage.removeItem('vortex_app_lock_bypassed_session');
     } catch (e) {}
     setUser(null);

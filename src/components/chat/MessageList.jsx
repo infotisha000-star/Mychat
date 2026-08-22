@@ -100,7 +100,9 @@ export const MessageList = React.memo(({
     );
   }
 
-  if (!messages || messages.filter((m) => !m.deleted).length === 0) {
+  const validMessages = (Array.isArray(messages) ? messages : []).filter((m) => m && m.id);
+
+  if (validMessages.filter((m) => !m.deleted).length === 0) {
     return (
       <div className="flex-1 p-6 flex flex-col items-center justify-center text-center gap-3 text-slate-500">
         <div className="p-4 rounded-full bg-slate-900 border border-slate-800 text-indigo-400">
@@ -156,7 +158,7 @@ export const MessageList = React.memo(({
         onScroll={handleScroll}
         className="flex-1 p-4 overflow-y-auto flex flex-col gap-1 relative scroll-smooth"
       >
-        {messages.map((msg) => (
+        {validMessages.map((msg) => (
           <MessageItem
             key={msg.id}
             message={msg}
@@ -176,17 +178,18 @@ export const MessageList = React.memo(({
           />
         ))}
         <div ref={bottomRef} className="h-1" />
-
-        {showScrollBottom && !isSelectionMode && (
-          <button
-            onClick={() => scrollToBottom(true)}
-            className="sticky bottom-4 right-4 ml-auto p-3 rounded-full bg-indigo-600/90 hover:bg-indigo-500 text-white shadow-xl shadow-indigo-950/60 border border-indigo-400/40 z-20 flex items-center justify-center transition-all hover:scale-105 active:scale-95"
-            title="Scroll to bottom"
-          >
-            <ArrowDown className="w-5 h-5" />
-          </button>
-        )}
       </div>
+
+      {/* Floating Telegram-style Scroll-to-Bottom Button */}
+      {showScrollBottom && !isSelectionMode && (
+        <button
+          onClick={() => scrollToBottom(true)}
+          className="absolute bottom-4 right-4 p-3 rounded-full bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white shadow-2xl shadow-indigo-950/80 border border-indigo-400/40 z-30 flex items-center justify-center transition-all hover:scale-110 active:scale-95 animate-bounce cursor-pointer"
+          title="Scroll to latest messages"
+        >
+          <ArrowDown className="w-5 h-5 stroke-[2.5]" />
+        </button>
+      )}
     </div>
   );
 });

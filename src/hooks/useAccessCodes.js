@@ -59,14 +59,15 @@ export const useAccessCodes = () => {
 
   /**
    * Generates a new access code and saves to Cloud Firestore + RTDB + LocalStorage instantly.
+   * durationMinutes: 10 (10 mins), 30 (30 mins), 60 (1 hr), 1440 (1 day), 0 (Unlimited)
    */
-  const createAccessCode = async (durationHours = 24, maxUses = 1) => {
+  const createAccessCode = async (durationMinutes = 1440, maxUses = 1) => {
     const code = generateAccessCode('ROOM');
     const cleanCode = normalizeCode(code);
     
     let expiresAt = null;
-    if (durationHours && durationHours > 0) {
-      expiresAt = new Date(Date.now() + durationHours * 3600000).toISOString();
+    if (durationMinutes && durationMinutes > 0) {
+      expiresAt = new Date(Date.now() + durationMinutes * 60000).toISOString();
     }
 
     const newCodeObj = {

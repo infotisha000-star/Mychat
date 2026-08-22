@@ -1,74 +1,194 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Pin, ChevronRight, X } from 'lucide-react';
+import { Pin, ChevronRight, ChevronLeft, X, Layers } from 'lucide-react';
 
 export const PinnedBanner = ({ pinnedMessages = [], onScrollToMessage, onUnpinMessage, isAdmin }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [showAllModal, setShowAllModal] = useState(false);
 
-  if (!pinnedMessages || pinnedMessages.length === 0) return null;
+  const safePinned = (Array.isArray(pinnedMessages) ? pinnedMessages : []).filter((m) => m && m.id && !m.deleted);
 
-  const currentMsg = pinnedMessages[currentIndex % pinnedMessages.length];
+  // Keep index within bounds whenever safePinned changes
+  useEffect(() => {
+    if (safePinned.length > 0) {
+      setCurrentIndex((prev) => (prev >= safePinned.length ? safePinned.length - 1 : prev));
+    }
+  }, [safePinned.length]);
 
-  const handleNext = () => {
-    setCurrentIndex((prev) => (prev + 1) % pinnedMessages.length);
+  if (safePinned.length === 0) return null;
+
+  const currentMsg = safePinned[currentIndex % safePinned.length] || safePinned[0];
+
+  const handleBannerClick = () => {
+    if (!currentMsg) return;
+    if (onScrollToMessage) onScrollToMessage(currentMsg.id);
+    if (safePinned.length > 1) {
+      setCurrentIndex((prev) => (prev + 1) % safePinned.length);
+    }
+  };
+
+  const handleNext = (e) => {
+    e.stopPropagation();
+    if (safePinned.length > 1) {
+      const nextIdx = (currentIndex + 1) % safePinned.length;
+      setCurrentIndex(nextIdx);
+      if (onScrollToMessage && safePinned[nextIdx]) {
+        onScrollToMessage(safePinned[nextIdx].id);
+      }
+    }
+  };
+
+  const handlePrev = (e) => {
+    e.stopPropagation();
+    if (safePinned.length > 1) {
+      const prevIdx = (currentIndex - 1 + safePinned.length) % safePinned.length;
+      setCurrentIndex(prevIdx);
+      if (onScrollToMessage && safePinned[prevIdx]) {
+        onScrollToMessage(safePinned[prevIdx].id);
+      }
+    }
   };
 
   return (
-    <AnimatePresence>
-      <motion.div
-        initial={{ opacity: 0, height: 0 }}
-        animate={{ opacity: 1, height: 'auto' }}
-        exit={{ opacity: 0, height: 0 }}
-        className="bg-slate-900/95 border-b border-indigo-500/30 px-4 py-2 flex items-center justify-between gap-3 text-xs z-20 shrink-0 shadow-md backdrop-blur-sm"
-      >
-        {/* Left: Icon & Text preview */}
-        <div 
-          onClick={() => onScrollToMessage(currentMsg.id)}
-          className="flex items-center gap-2.5 flex-1 min-w-0 cursor-pointer group"
+    <div className="relative z-20 shrink-0">
+      <AnimatePresence>
+        <motion.div
+          initial={{ opacity: 0, height: 0 }}
+          animate={{ opacity: 1, height: 'auto' }}
+          exit={{ opacity: 0, height: 0 }}
+          className="bg-slate-900/95 border-b border-indigo-500/30 px-3 sm:px-4 py-2 flex items-center justify-between gap-3 text-xs shadow-md backdrop-blur-sm"
         >
-          <div className="p-1.5 rounded-lg bg-indigo-950/80 border border-indigo-500/40 text-indigo-400 group-hover:scale-105 transition-transform">
-            <Pin className="w-3.5 h-3.5 fill-indigo-400/20" />
-          </div>
-
-          <div className="flex flex-col min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="font-bold text-indigo-300">📌 Pinned Message</span>
-              {pinnedMessages.length > 1 && (
-                <span className="text-[10px] text-slate-400 font-mono">
-                  ({(currentIndex % pinnedMessages.length) + 1}/{pinnedMessages.length})
-                </span>
-              )}
+          {/* Left: Icon & Text preview (Click to Jump & Cycle) */}
+          <div 
+            onClick={handleBannerClick}
+            className="flex items-center gap-2.5 flex-1 min-w-0 cursor-pointer group"
+            title="Click to jump to message (Click again to cycle)"
+          >
+            <div className="p-1.5 rounded-lg bg-amber-950/70 border border-amber-500/40 text-amber-400 group-hover:scale-105 transition-transform shrink-0">
+              <Pin className="w-3.5 h-3.5 fill-amber-400/30" />
             </div>
-            <p className="text-slate-200 truncate text-[11px] group-hover:text-white transition-colors">
-              <span className="font-semibold text-slate-400 mr-1">{currentMsg.senderName}:</span>
-              {currentMsg.text || (currentMsg.media?.length ? '📷 [Media attachment]' : '')}
-            </p>
+
+            <div className="flex flex-col min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-amber-300 text-[11px] sm:text-xs">
+                  Pinned Messages
+                </span>
+                {safePinned.length > 1 && (
+                  <span className="text-[10px] text-amber-400/90 font-mono bg-amber-950/80 px-1.5 py-0.2 rounded-md border border-amber-500/30">
+                    {(currentIndex % safePinned.length) + 1} of {safePinned.length}
+                  </span>
+                )}
+              </div>
+              <p className="text-slate-200 truncate text-[11px] group-hover:text-white transition-colors">
+                <span className="font-semibold text-slate-400 mr-1">{currentMsg.senderName || 'User'}:</span>
+                {currentMsg.text || (currentMsg.media?.length ? '📷 [Media attachment]' : '')}
+              </p>
+            </div>
           </div>
-        </div>
 
-        {/* Right: Controls */}
-        <div className="flex items-center gap-1 shrink-0">
-          {pinnedMessages.length > 1 && (
-            <button
-              onClick={handleNext}
-              className="p-1 text-slate-400 hover:text-white hover:bg-slate-800 rounded-md transition-colors"
-              title="Next Pinned Message"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          )}
+          {/* Right: Navigation & Controls */}
+          <div className="flex items-center gap-1 shrink-0">
+            {safePinned.length > 1 && (
+              <>
+                <button
+                  onClick={handlePrev}
+                  className="p-1 text-slate-400 hover:text-white hover:bg-slate-800 rounded-md transition-colors"
+                  title="Previous Pinned Message"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={handleNext}
+                  className="p-1 text-slate-400 hover:text-white hover:bg-slate-800 rounded-md transition-colors"
+                  title="Next Pinned Message"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowAllModal((prev) => !prev);
+                  }}
+                  className="p-1 text-amber-400 hover:text-amber-300 hover:bg-slate-800 rounded-md transition-colors flex items-center gap-1 px-1.5"
+                  title="View All Pinned Messages"
+                >
+                  <Layers className="w-3.5 h-3.5" />
+                  <span className="text-[10px] font-bold">{safePinned.length}</span>
+                </button>
+              </>
+            )}
 
-          {isAdmin && (
-            <button
-              onClick={() => onUnpinMessage(currentMsg.id)}
-              className="p-1 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-md transition-colors"
-              title="Unpin Message"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          )}
-        </div>
-      </motion.div>
-    </AnimatePresence>
+            {isAdmin && currentMsg && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (onUnpinMessage) onUnpinMessage(currentMsg.id);
+                }}
+                className="p-1 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-md transition-colors"
+                title="Unpin Current Message"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+        </motion.div>
+      </AnimatePresence>
+
+      {/* Popover Listing All Pinned Messages */}
+      {showAllModal && (
+        <>
+          <div
+            className="fixed inset-0 z-30 bg-black/40"
+            onClick={() => setShowAllModal(false)}
+          />
+          <div className="absolute left-2 right-2 top-full mt-1 z-40 bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl p-3 max-h-64 overflow-y-auto flex flex-col gap-2 text-xs animate-fadeIn">
+            <div className="flex items-center justify-between pb-1.5 border-b border-slate-800 text-[11px] font-bold text-amber-400">
+              <span>All Pinned Messages ({safePinned.length})</span>
+              <button
+                onClick={() => setShowAllModal(false)}
+                className="text-slate-400 hover:text-white"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              {safePinned.map((msg, idx) => (
+                <div
+                  key={msg.id}
+                  onClick={() => {
+                    setCurrentIndex(idx);
+                    if (onScrollToMessage) onScrollToMessage(msg.id);
+                    setShowAllModal(false);
+                  }}
+                  className="flex items-center justify-between p-2 rounded-xl bg-slate-950/80 border border-slate-800/80 hover:border-amber-500/50 hover:bg-slate-800/60 cursor-pointer transition-all group"
+                >
+                  <div className="flex flex-col min-w-0 flex-1 pr-2">
+                    <span className="font-semibold text-slate-300 text-[11px] group-hover:text-amber-300">
+                      {msg.senderName || 'User'}
+                    </span>
+                    <p className="text-slate-400 truncate text-[10px]">
+                      {msg.text || (msg.media?.length ? '📷 [Media attachment]' : '')}
+                    </p>
+                  </div>
+                  {isAdmin && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (onUnpinMessage) onUnpinMessage(msg.id);
+                      }}
+                      className="p-1 text-slate-500 hover:text-rose-400 rounded"
+                      title="Unpin"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
   );
 };

@@ -3,6 +3,7 @@ import { useAccessCodes } from '../../hooks/useAccessCodes';
 import { useToast } from '../../context/ToastContext';
 import { formatRemainingTime } from '../../utils/timeAgo';
 import { Button } from '../ui/Button';
+import { QRCodeModal } from './QRCodeModal';
 import { 
   KeyRound, 
   Copy, 
@@ -11,22 +12,24 @@ import {
   Plus, 
   CheckCircle2, 
   Clock, 
-  User 
+  User,
+  QrCode
 } from 'lucide-react';
 
 export const AccessCodeManager = () => {
   const { accessCodes, loading, createAccessCode, toggleCodeStatus, deleteCode } = useAccessCodes();
   const toast = useToast();
 
-  const [durationHours, setDurationHours] = useState(24);
+  const [durationMinutes, setDurationMinutes] = useState(60);
   const [maxUses, setMaxUses] = useState(1);
   const [creating, setCreating] = useState(false);
   const [copiedId, setCopiedId] = useState(null);
+  const [activeQrCode, setActiveQrCode] = useState(null);
 
   const handleGenerate = async () => {
     setCreating(true);
     try {
-      const newCode = await createAccessCode(durationHours, maxUses);
+      const newCode = await createAccessCode(durationMinutes, maxUses);
       toast.success(`New code created: ${newCode.code}`);
     } catch (err) {
       toast.error('Failed to create access code.');
@@ -57,15 +60,17 @@ export const AccessCodeManager = () => {
               Expiration Duration
             </label>
             <select
-              value={durationHours}
-              onChange={(e) => setDurationHours(Number(e.target.value))}
-              className="w-full bg-slate-900 dark:bg-slate-900 light:bg-white border border-slate-700/80 dark:border-slate-700/80 light:border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-100 dark:text-slate-100 light:text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              value={durationMinutes}
+              onChange={(e) => setDurationMinutes(Number(e.target.value))}
+              className="w-full bg-slate-900 dark:bg-slate-900 light:bg-white border border-slate-700/80 dark:border-slate-700/80 light:border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-100 dark:text-slate-100 light:text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
             >
-              <option value={1}>1 Hour</option>
-              <option value={6}>6 Hours</option>
-              <option value={12}>12 Hours</option>
-              <option value={24}>24 Hours (1 Day)</option>
-              <option value={168}>7 Days</option>
+              <option value={10}>10 Minutes</option>
+              <option value={30}>30 Minutes</option>
+              <option value={60}>1 Hour</option>
+              <option value={360}>6 Hours</option>
+              <option value={720}>12 Hours</option>
+              <option value={1440}>24 Hours (1 Day)</option>
+              <option value={10080}>7 Days</option>
               <option value={0}>Unlimited (No Expiry)</option>
             </select>
           </div>
@@ -156,6 +161,14 @@ export const AccessCodeManager = () => {
                 {/* Actions */}
                 <div className="flex items-center gap-1.5 shrink-0">
                   <button
+                    onClick={() => setActiveQrCode(item.code)}
+                    className="p-2 rounded-lg bg-indigo-950/80 dark:bg-indigo-950/80 light:bg-indigo-100 hover:bg-indigo-900 border border-indigo-500/40 text-cyan-400 dark:text-cyan-300 light:text-indigo-700 transition-colors"
+                    title="Show QR Code"
+                  >
+                    <QrCode className="w-4 h-4 shrink-0" />
+                  </button>
+
+                  <button
                     onClick={() => handleCopy(item.code, item.id)}
                     className="p-2 rounded-lg bg-slate-800 dark:bg-slate-800 light:bg-slate-100 hover:bg-slate-700 dark:hover:bg-slate-700 light:hover:bg-slate-200 text-slate-200 dark:text-slate-200 light:text-slate-800 transition-colors"
                     title="Copy Code"
@@ -196,6 +209,13 @@ export const AccessCodeManager = () => {
           </div>
         )}
       </div>
+
+      {/* QR Code Viewer Modal */}
+      <QRCodeModal
+        isOpen={!!activeQrCode}
+        onClose={() => setActiveQrCode(null)}
+        code={activeQrCode}
+      />
     </div>
   );
 };

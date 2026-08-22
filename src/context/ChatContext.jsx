@@ -8,6 +8,7 @@ const ChatContext = createContext(null);
 
 const MESSAGES_KEY = 'vortex_local_messages';
 const SESSIONS_KEY = 'vortex_local_sessions';
+const PINNED_IDS_KEY = 'vortex_pinned_ids';
 const SYNC_CHANNEL_NAME = 'vortex_chat_channel';
 
 export const ChatProvider = ({ children }) => {
@@ -15,11 +16,23 @@ export const ChatProvider = ({ children }) => {
   const [messages, setMessages] = useState(() => {
     try {
       const storedMsgs = localStorage.getItem(MESSAGES_KEY);
-      return storedMsgs ? JSON.parse(storedMsgs) : [];
+      const parsed = storedMsgs ? JSON.parse(storedMsgs) : [];
+      return Array.isArray(parsed) ? parsed.filter((m) => m && m.id) : [];
     } catch {
       return [];
     }
   });
+
+  const [pinnedIds, setPinnedIds] = useState(() => {
+    try {
+      const stored = localStorage.getItem(PINNED_IDS_KEY);
+      const parsed = stored ? JSON.parse(stored) : [];
+      return new Set(Array.isArray(parsed) ? parsed.map(String) : []);
+    } catch {
+      return new Set();
+    }
+  });
+
   const [pinnedMessages, setPinnedMessages] = useState([]);
   const [activeUsers, setActiveUsers] = useState([]);
   const [loadingMessages, setLoadingMessages] = useState(false);
@@ -34,6 +47,28 @@ export const ChatProvider = ({ children }) => {
       requestNotificationPermission();
     }
   }, [user]);
+
+  // Real-time Cloud Sync for Pinned Message IDs
+  useEffect(() => {
+    let unsubRTDB = null;
+    try {
+      const idsRef = ref(rtdb, 'pinned_ids');
+      unsubRTDB = onValue(idsRef, (snapshot) => {
+        if (snapshot.exists()) {
+          const val = snapshot.val();
+          const list = Array.isArray(val) ? val : Object.values(val);
+          const stringList = list.map(String);
+          setPinnedIds(new Set(stringList));
+          try {
+            localStorage.setItem(PINNED_IDS_KEY, JSON.stringify(stringList));
+          } catch (e) {}
+        }
+      });
+    } catch (e) {}
+    return () => {
+      if (typeof unsubRTDB === 'function') unsubRTDB();
+    };
+  }, []);
 
   // Sync BroadcastChannel locally
   useEffect(() => {
@@ -51,10 +86,13 @@ export const ChatProvider = ({ children }) => {
     }
   }, []);
 
-  // Update pinned messages whenever messages change
+  // Update pinned messages whenever messages or pinnedIds change
   useEffect(() => {
-    setPinnedMessages(messages.filter((m) => m.pinned && !m.deleted));
-  }, [messages]);
+    const valid = (Array.isArray(messages) ? messages : []).filter(
+      (m) => m && m.id && (pinnedIds.has(String(m.id)) || Boolean(m.pinned)) && !m.deleted
+    );
+    setPinnedMessages(valid);
+  }, [messages, pinnedIds]);
 
   // Listen for online reconnection to auto-sync state
   useEffect(() => {
@@ -73,28 +111,37 @@ export const ChatProvider = ({ children }) => {
     const mergeAndSetMessages = (newList) => {
       setMessages((prev) => {
         const msgMap = new Map();
-        const prevIds = new Set(prev.map((m) => m.id));
+        const validPrev = Array.isArray(prev) ? prev.filter((m) => m && m.id) : [];
+        const prevIds = new Set(validPrev.map((m) => m.id));
 
         // Keep existing
-        prev.forEach((m) => m && m.id && msgMap.set(m.id, m));
+        validPrev.forEach((m) => msgMap.set(m.id, m));
         
         let hasIncomingNewMessage = false;
         let incomingMsgObj = null;
 
-        // Merge new
-        newList.forEach((m) => {
+        // Merge new preserving pinned status across streams
+        (Array.isArray(newList) ? newList : []).forEach((m) => {
           if (m && m.id) {
             if (!prevIds.has(m.id) && m.senderId !== user?.uid && !isInitialMount.current) {
               hasIncomingNewMessage = true;
               incomingMsgObj = m;
             }
-            msgMap.set(m.id, m);
+            const existing = msgMap.get(m.id);
+            const isPinned = pinnedIds.has(String(m.id)) || Boolean(m.pinned) || Boolean(existing?.pinned);
+            msgMap.set(m.id, {
+              ...(existing || {}),
+              ...m,
+              pinned: isPinned,
+            });
           }
         });
 
         const merged = Array.from(msgMap.values());
-        merged.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-        localStorage.setItem(MESSAGES_KEY, JSON.stringify(merged));
+        merged.sort((a, b) => new Date(a.timestamp || 0) - new Date(b.timestamp || 0));
+        try {
+          localStorage.setItem(MESSAGES_KEY, JSON.stringify(merged));
+        } catch (e) {}
 
         // Play audio chime and display notification for incoming message
         if (hasIncomingNewMessage && incomingMsgObj) {
@@ -161,6 +208,8 @@ export const ChatProvider = ({ children }) => {
   // Sync Active User Presence in Firebase
   useEffect(() => {
     if (!user) return;
+    let unsub = null;
+
     try {
       const sessionObj = {
         id: user.uid,
@@ -173,18 +222,25 @@ export const ChatProvider = ({ children }) => {
 
       // Listen to active users
       const presenceRef = ref(rtdb, 'presence');
-      const unsub = onValue(presenceRef, (snapshot) => {
+      unsub = onValue(presenceRef, (snapshot) => {
         if (snapshot.exists()) {
           const val = snapshot.val();
           const list = Object.values(val);
           setActiveUsers(list);
           localStorage.setItem(SESSIONS_KEY, JSON.stringify(list));
         }
+      }, (err) => {
+        console.warn('Presence listener warning:', err);
       });
-      return () => unsub();
     } catch (e) {
       console.warn('Presence sync error:', e);
     }
+
+    return () => {
+      if (typeof unsub === 'function') {
+        try { unsub(); } catch (e) {}
+      }
+    };
   }, [user]);
 
   const loadStateFromStorage = useCallback(() => {
@@ -409,38 +465,62 @@ export const ChatProvider = ({ children }) => {
   const togglePinMessage = useCallback(async (messageId) => {
     if (!user) throw new Error('Not authenticated');
 
-    let pinnedObj = null;
-    setMessages((prev) =>
-      prev.map((msg) => {
-        if (msg.id === messageId) {
-          pinnedObj = {
-            ...msg,
-            pinned: !msg.pinned,
-            pinnedAt: !msg.pinned ? new Date().toISOString() : null,
-            pinnedBy: !msg.pinned ? (user.displayName || user.userName || 'Admin') : null,
-          };
-          return pinnedObj;
-        }
-        return msg;
-      })
-    );
+    const targetIdStr = String(messageId);
 
-    if (pinnedObj) {
-      setDoc(doc(db, 'messages', messageId), pinnedObj, { merge: true }).catch(console.warn);
-      set(ref(rtdb, `messages/${messageId}`), pinnedObj).catch(console.warn);
-    }
+    setPinnedIds((prevIds) => {
+      const nextSet = new Set(prevIds);
+      let isNowPinned = false;
+      if (nextSet.has(targetIdStr)) {
+        nextSet.delete(targetIdStr);
+        isNowPinned = false;
+      } else {
+        nextSet.add(targetIdStr);
+        isNowPinned = true;
+      }
+
+      const arr = Array.from(nextSet);
+      try {
+        localStorage.setItem(PINNED_IDS_KEY, JSON.stringify(arr));
+      } catch (e) {}
+      set(ref(rtdb, 'pinned_ids'), arr).catch(console.warn);
+      setDoc(doc(db, 'settings', 'pinned_ids'), { ids: arr }, { merge: true }).catch(console.warn);
+
+      setMessages((prevMsgs) => {
+        const updated = prevMsgs.map((msg) => {
+          if (msg && String(msg.id) === targetIdStr) {
+            const updatedMsg = {
+              ...msg,
+              pinned: isNowPinned,
+              pinnedAt: isNowPinned ? new Date().toISOString() : null,
+              pinnedBy: isNowPinned ? (user.displayName || user.userName || 'Admin') : null,
+            };
+            setDoc(doc(db, 'messages', targetIdStr), updatedMsg, { merge: true }).catch(console.warn);
+            set(ref(rtdb, `messages/${targetIdStr}`), updatedMsg).catch(console.warn);
+            return updatedMsg;
+          }
+          return msg;
+        });
+        try {
+          localStorage.setItem(MESSAGES_KEY, JSON.stringify(updated));
+        } catch (e) {}
+        return updated;
+      });
+
+      return nextSet;
+    });
 
     notifySync();
   }, [user, notifySync]);
 
   // Filter messages by search query
   const filteredMessages = React.useMemo(() => {
-    return searchQuery.trim()
-      ? messages.filter((m) =>
-          m.text?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          m.senderName?.toLowerCase().includes(searchQuery.toLowerCase())
-        )
-      : messages;
+    const safeMsgs = (Array.isArray(messages) ? messages : []).filter((m) => m && m.id);
+    if (!searchQuery.trim()) return safeMsgs;
+    const queryLower = searchQuery.toLowerCase();
+    return safeMsgs.filter((m) =>
+      (typeof m.text === 'string' && m.text.toLowerCase().includes(queryLower)) ||
+      (typeof m.senderName === 'string' && m.senderName.toLowerCase().includes(queryLower))
+    );
   }, [messages, searchQuery]);
 
   const value = React.useMemo(() => ({

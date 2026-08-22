@@ -64,13 +64,16 @@ export const App = () => {
   }, []);
 
   const handleScrollToMessage = useCallback((id) => {
+    if (!id) return;
     const el = document.getElementById(`msg-${id}`);
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.classList.add('ring-4', 'ring-amber-400', 'rounded-2xl', 'scale-[1.01]', 'transition-all', 'duration-300');
+      setTimeout(() => {
+        el.classList.remove('ring-4', 'ring-amber-400', 'rounded-2xl', 'scale-[1.01]', 'transition-all', 'duration-300');
+      }, 2200);
+    }
   }, []);
-
-  if (authLoading) {
-    return <LoadingScreen message="Verifying user session..." />;
-  }
 
   return (
     <div className="relative h-full h-[100dvh] w-full overflow-hidden bg-[#0b0f19] dark:bg-[#0b0f19] light:bg-[#f1f5f9] text-slate-100 transition-colors duration-300">

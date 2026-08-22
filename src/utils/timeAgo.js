@@ -54,7 +54,7 @@ export const formatClockTime = (timestamp) => {
  * Formats time remaining for access code expiration countdowns.
  */
 export const formatRemainingTime = (expiresAt) => {
-  if (!expiresAt) return 'No limit';
+  if (!expiresAt) return 'Unlimited (No Expiry)';
   let date;
   if (expiresAt.toDate && typeof expiresAt.toDate === 'function') {
     date = expiresAt.toDate();
@@ -64,16 +64,23 @@ export const formatRemainingTime = (expiresAt) => {
     date = new Date(expiresAt);
   }
 
+  if (isNaN(date.getTime())) return 'Unlimited (No Expiry)';
+
   const now = new Date();
   const diffInMs = date - now;
   if (diffInMs <= 0) return 'Expired';
 
-  const diffInMinutes = Math.floor(diffInMs / (1000 * 60));
+  const diffInSeconds = Math.floor(diffInMs / 1000);
+  const diffInMinutes = Math.floor(diffInSeconds / 60);
   const hours = Math.floor(diffInMinutes / 60);
   const mins = diffInMinutes % 60;
+  const secs = diffInSeconds % 60;
 
   if (hours > 0) {
     return `${hours}h ${mins}m left`;
   }
-  return `${mins}m left`;
+  if (mins > 0) {
+    return `${mins}m ${secs}s left`;
+  }
+  return `${secs}s left`;
 };
