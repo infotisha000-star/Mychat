@@ -276,7 +276,7 @@ export const MessageItem = React.memo(({
           {/* Message Text */}
           {message.text && (
             <div
-              className="whitespace-pre-wrap break-words font-sans text-[14px] leading-relaxed select-text"
+              className="whitespace-pre-wrap break-words [overflow-wrap:anywhere] max-w-full font-sans text-[14px] leading-relaxed select-text"
               dangerouslySetInnerHTML={{ __html: renderFormattedText(message.text) }}
             />
           )}

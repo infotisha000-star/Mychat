@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useAuth } from './context/AuthContext';
 import { useChat } from './context/ChatContext';
 
@@ -30,6 +30,29 @@ export const App = () => {
   const [lightboxImage, setLightboxImage] = useState(null);
   const [modalVideo, setModalVideo] = useState(null);
   const [isAdminDashboardOpen, setIsAdminDashboardOpen] = useState(false);
+  const [viewportHeight, setViewportHeight] = useState('100dvh');
+
+  // Mobile virtual keyboard visualViewport height tracking for stable header
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.visualViewport) return;
+
+    const handleResize = () => {
+      if (window.visualViewport) {
+        setViewportHeight(`${window.visualViewport.height}px`);
+      }
+    };
+
+    window.visualViewport.addEventListener('resize', handleResize);
+    window.visualViewport.addEventListener('scroll', handleResize);
+    handleResize();
+
+    return () => {
+      if (window.visualViewport) {
+        window.visualViewport.removeEventListener('resize', handleResize);
+        window.visualViewport.removeEventListener('scroll', handleResize);
+      }
+    };
+  }, []);
 
   const handleReply = useCallback((msg) => {
     setReplyTarget(msg);
@@ -85,7 +108,10 @@ export const App = () => {
           <AuthCard />
         </div>
       ) : (
-        <div className="app-container relative z-10 flex flex-col h-full h-[100dvh] w-full max-w-4xl mx-auto bg-slate-900/80 text-slate-100 shadow-2xl overflow-hidden border-x border-slate-800/60 backdrop-blur-md transition-colors duration-300">
+        <div 
+          style={{ height: viewportHeight }}
+          className="app-container relative z-10 flex flex-col w-full max-w-4xl mx-auto bg-slate-900/80 text-slate-100 shadow-2xl overflow-hidden border-x border-slate-800/60 backdrop-blur-md transition-colors duration-300"
+        >
           {/* Top Header */}
           <ChatHeader onOpenAdminDashboard={handleOpenAdminDashboard} />
 

@@ -7,12 +7,29 @@ export const LightboxViewer = ({ isOpen, imageUrl, onClose }) => {
 
   if (!isOpen || !imageUrl) return null;
 
-  const handleZoomIn = () => setScale((prev) => Math.min(prev + 0.5, 3));
+  const handleZoomIn = () => setScale((prev) => Math.min(prev + 0.5, 3.5));
   const handleZoomOut = () => setScale((prev) => Math.max(prev - 0.5, 1));
+
+  const handleDownload = async () => {
+    try {
+      const response = await fetch(imageUrl);
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = `photo_${Date.now()}.jpg`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(blobUrl);
+    } catch (e) {
+      window.open(imageUrl, '_blank');
+    }
+  };
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-md p-4">
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-md p-4 select-none">
         {/* Top Control Bar */}
         <div className="absolute top-4 left-4 right-4 z-20 flex items-center justify-between text-white">
           <div className="flex items-center gap-2">
@@ -33,19 +50,17 @@ export const LightboxViewer = ({ isOpen, imageUrl, onClose }) => {
           </div>
 
           <div className="flex items-center gap-2">
-            <a
-              href={imageUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              download
-              className="p-2 rounded-xl bg-slate-900/80 hover:bg-slate-800 border border-slate-800 transition-colors text-white"
-              title="Download Image"
+            <button
+              onClick={handleDownload}
+              className="p-2.5 rounded-xl bg-slate-900/80 hover:bg-slate-800 border border-slate-800 transition-colors text-white flex items-center gap-1.5 text-xs font-semibold"
+              title="Download Photo"
             >
-              <Download className="w-5 h-5" />
-            </a>
+              <Download className="w-5 h-5 text-indigo-400" />
+              <span className="hidden xs:inline">Download</span>
+            </button>
             <button
               onClick={onClose}
-              className="p-2 rounded-xl bg-slate-900/80 hover:bg-rose-900/80 border border-slate-800 transition-colors text-white"
+              className="p-2.5 rounded-xl bg-slate-900/80 hover:bg-rose-900/80 border border-slate-800 transition-colors text-white"
               title="Close Viewer"
             >
               <X className="w-5 h-5" />
@@ -58,7 +73,7 @@ export const LightboxViewer = ({ isOpen, imageUrl, onClose }) => {
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 0.9 }}
-          className="relative max-w-full max-h-full flex items-center justify-center overflow-auto p-2"
+          className="relative max-w-full max-h-full flex items-center justify-center overflow-auto p-2 mt-12"
         >
           <img
             src={imageUrl}

@@ -13,7 +13,7 @@ export const ChatHeader = ({ onOpenAdminDashboard }) => {
   const [showThemePicker, setShowThemePicker] = useState(false);
 
   return (
-    <header className="app-header sticky top-0 z-30 bg-slate-900/90 backdrop-blur-md border-b border-slate-800/80 px-2.5 sm:px-4 py-2 flex items-center justify-between shadow-lg shrink-0 transition-colors duration-300 w-full overflow-hidden">
+    <header className="app-header sticky top-0 z-30 bg-slate-900/90 backdrop-blur-md border-b border-slate-800/80 px-2.5 sm:px-4 py-2 flex items-center justify-between shadow-lg shrink-0 transition-colors duration-300 w-full">
       {/* Search Mode (Full Width Replacement) */}
       {showSearch ? (
         <div className="flex-1 flex items-center gap-2 animate-fadeIn w-full">

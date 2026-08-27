@@ -50,57 +50,71 @@ export const PinnedBanner = ({ pinnedMessages = [], onScrollToMessage, onUnpinMe
   };
 
   return (
-    <div className="relative z-20 shrink-0">
-      <AnimatePresence>
+    <div className="relative z-20 shrink-0 select-none">
+      <AnimatePresence mode="wait">
         <motion.div
-          initial={{ opacity: 0, height: 0 }}
-          animate={{ opacity: 1, height: 'auto' }}
-          exit={{ opacity: 0, height: 0 }}
-          className="bg-slate-900/95 border-b border-indigo-500/30 px-3 sm:px-4 py-2 flex items-center justify-between gap-3 text-xs shadow-md backdrop-blur-sm"
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -8 }}
+          transition={{ duration: 0.2 }}
+          className="bg-slate-900/95 dark:bg-slate-900/95 light:bg-amber-50/90 border-b border-indigo-500/30 px-3 sm:px-4 py-2 flex items-center justify-between gap-3 text-xs shadow-md backdrop-blur-md"
         >
-          {/* Left: Icon & Text preview (Click to Jump & Cycle) */}
+          {/* Telegram Accent Bar & Animated Text */}
           <div 
             onClick={handleBannerClick}
-            className="flex items-center gap-2.5 flex-1 min-w-0 cursor-pointer group"
-            title="Click to jump to message (Click again to cycle)"
+            className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer group"
+            title="Click to jump to pinned message (Click again to cycle)"
           >
-            <div className="p-1.5 rounded-lg bg-amber-950/70 border border-amber-500/40 text-amber-400 group-hover:scale-105 transition-transform shrink-0">
-              <Pin className="w-3.5 h-3.5 fill-amber-400/30" />
-            </div>
+            {/* Telegram Vertical Accent Pill */}
+            <div className="w-1 h-7 rounded-full bg-gradient-to-b from-amber-400 to-indigo-500 shrink-0 shadow-sm group-hover:scale-y-110 transition-transform" />
 
-            <div className="flex flex-col min-w-0 flex-1">
+            <div className="flex flex-col min-w-0 flex-1 overflow-hidden">
               <div className="flex items-center gap-2">
-                <span className="font-bold text-amber-300 text-[11px] sm:text-xs">
-                  Pinned Messages
+                <span className="font-bold text-amber-400 dark:text-amber-400 light:text-amber-700 text-[11px] sm:text-xs flex items-center gap-1">
+                  <Pin className="w-3 h-3 fill-amber-400/40" />
+                  <span>Pinned Message</span>
                 </span>
                 {safePinned.length > 1 && (
-                  <span className="text-[10px] text-amber-400/90 font-mono bg-amber-950/80 px-1.5 py-0.2 rounded-md border border-amber-500/30">
-                    {(currentIndex % safePinned.length) + 1} of {safePinned.length}
+                  <span className="text-[10px] text-amber-300 font-mono bg-amber-950/90 px-1.5 py-0.2 rounded-md border border-amber-500/40">
+                    {(currentIndex % safePinned.length) + 1} / {safePinned.length}
                   </span>
                 )}
               </div>
-              <p className="text-slate-200 truncate text-[11px] group-hover:text-white transition-colors">
-                <span className="font-semibold text-slate-400 mr-1">{currentMsg.senderName || 'User'}:</span>
-                {currentMsg.text || (currentMsg.media?.length ? '📷 [Media attachment]' : '')}
-              </p>
+
+              {/* Animated Text Content */}
+              <AnimatePresence mode="wait">
+                <motion.p
+                  key={currentMsg.id}
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -6 }}
+                  transition={{ duration: 0.15 }}
+                  className="text-slate-200 dark:text-slate-200 light:text-slate-800 truncate text-[11px] font-medium group-hover:text-white transition-colors"
+                >
+                  <span className="font-semibold text-indigo-300 dark:text-indigo-300 light:text-indigo-600 mr-1">
+                    {currentMsg.senderName || 'User'}:
+                  </span>
+                  {currentMsg.text || (currentMsg.media?.length ? '📷 [Media attachment]' : '')}
+                </motion.p>
+              </AnimatePresence>
             </div>
           </div>
 
-          {/* Right: Navigation & Controls */}
+          {/* Controls */}
           <div className="flex items-center gap-1 shrink-0">
             {safePinned.length > 1 && (
               <>
                 <button
                   onClick={handlePrev}
-                  className="p-1 text-slate-400 hover:text-white hover:bg-slate-800 rounded-md transition-colors"
-                  title="Previous Pinned Message"
+                  className="p-1 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
+                  title="Previous Pinned"
                 >
                   <ChevronLeft className="w-4 h-4" />
                 </button>
                 <button
                   onClick={handleNext}
-                  className="p-1 text-slate-400 hover:text-white hover:bg-slate-800 rounded-md transition-colors"
-                  title="Next Pinned Message"
+                  className="p-1 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
+                  title="Next Pinned"
                 >
                   <ChevronRight className="w-4 h-4" />
                 </button>
@@ -109,8 +123,8 @@ export const PinnedBanner = ({ pinnedMessages = [], onScrollToMessage, onUnpinMe
                     e.stopPropagation();
                     setShowAllModal((prev) => !prev);
                   }}
-                  className="p-1 text-amber-400 hover:text-amber-300 hover:bg-slate-800 rounded-md transition-colors flex items-center gap-1 px-1.5"
-                  title="View All Pinned Messages"
+                  className="p-1 text-amber-400 hover:text-amber-300 hover:bg-slate-800 rounded-lg transition-colors flex items-center gap-1 px-1.5"
+                  title="View All Pinned"
                 >
                   <Layers className="w-3.5 h-3.5" />
                   <span className="text-[10px] font-bold">{safePinned.length}</span>
@@ -124,7 +138,7 @@ export const PinnedBanner = ({ pinnedMessages = [], onScrollToMessage, onUnpinMe
                   e.stopPropagation();
                   if (onUnpinMessage) onUnpinMessage(currentMsg.id);
                 }}
-                className="p-1 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-md transition-colors"
+                className="p-1 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-lg transition-colors"
                 title="Unpin Current Message"
               >
                 <X className="w-4 h-4" />

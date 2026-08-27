@@ -42,7 +42,7 @@ export const MessageList = React.memo(({
     if (!containerRef.current) return;
     const { scrollTop, scrollHeight, clientHeight } = containerRef.current;
     const isUp = scrollHeight - scrollTop - clientHeight > 150;
-    setShowScrollBottom(isUp);
+    setShowScrollBottom((prev) => (prev !== isUp ? isUp : prev));
   }, []);
 
   // Start selection mode from a message

@@ -4,6 +4,7 @@ import { useChat } from '../../context/ChatContext';
 import { useToast } from '../../context/ToastContext';
 import { useAppwriteUpload } from '../../hooks/useAppwriteUpload';
 import { insertFormattingSymbol } from '../../utils/textFormatter';
+import { compressImage } from '../../utils/imageCompressor';
 import { MediaUploader } from './MediaUploader';
 import { 
   Send, 
@@ -120,16 +121,26 @@ export const MessageComposer = ({ replyTo = null, onCancelReply }) => {
     }
   };
 
-  const handleFileSelect = (e) => {
+  const handleFileSelect = async (e) => {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
 
-    const fileObjects = files.map((file) => ({
-      file,
-      previewUrl: file.type.startsWith('image/') ? URL.createObjectURL(file) : '',
-    }));
+    toast.info('Processing media attachments...');
 
-    setSelectedFiles((prev) => [...prev, ...fileObjects]);
+    const processedFiles = await Promise.all(
+      files.map(async (file) => {
+        let finalFile = file;
+        if (file.type.startsWith('image/')) {
+          finalFile = await compressImage(file, 1920, 0.85);
+        }
+        return {
+          file: finalFile,
+          previewUrl: finalFile.type.startsWith('image/') ? URL.createObjectURL(finalFile) : '',
+        };
+      })
+    );
+
+    setSelectedFiles((prev) => [...prev, ...processedFiles]);
   };
 
   const handleRemoveFile = (idx) => {

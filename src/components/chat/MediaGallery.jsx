@@ -45,7 +45,7 @@ export const MediaGallery = React.memo(({ media = [], onOpenImage, onOpenVideo }
             src={item.url}
             alt={item.name || 'Attachment'}
             onClick={() => onOpenImage(item.url)}
-            className="w-full max-h-80 object-cover cursor-pointer hover:opacity-95 transition-opacity"
+            className="w-full max-h-80 min-h-[160px] bg-slate-950 object-cover cursor-pointer hover:opacity-95 transition-opacity"
             loading="lazy"
             decoding="async"
           />

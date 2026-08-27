@@ -13,36 +13,49 @@ export const renderFormattedText = (text) => {
     .replace(/>/g, '&gt;');
 
   // Telegram Spoilers ||text|| (Blur to reveal on click)
-  escaped = escaped.replace(/\|\|([^|]+)\|\|/g, '<span class="bg-slate-700 text-transparent select-none cursor-pointer rounded px-1 transition-colors hover:text-slate-100 hover:bg-slate-800" onclick="this.classList.remove(\'text-transparent\')">$1</span>');
+  escaped = escaped.replace(
+    /\|\|([^|]+)\|\|/g,
+    '<span class="bg-slate-700/80 text-transparent select-none cursor-pointer rounded px-1.5 py-0.5 transition-colors hover:text-slate-100 hover:bg-slate-800" onclick="this.classList.remove(\'text-transparent\')">$1</span>'
+  );
 
   // Telegram Underline <u>text</u> or __text__
-  escaped = escaped.replace(/__([^_]+)__/g, '<u class="underline decoration-indigo-400 decoration-2">$1</u>');
-  escaped = escaped.replace(/&lt;u&gt;(.*?)&lt;\/u&gt;/g, '<u class="underline decoration-indigo-400 decoration-2">$1</u>');
+  escaped = escaped.replace(/__([^_]+)__/g, '<u class="underline decoration-indigo-400 decoration-2 font-medium">$1</u>');
+  escaped = escaped.replace(/&lt;u&gt;(.*?)&lt;\/u&gt;/g, '<u class="underline decoration-indigo-400 decoration-2 font-medium">$1</u>');
 
   // Code blocks `code`
-  escaped = escaped.replace(/`([^`]+)`/g, '<code class="bg-slate-800 text-cyan-300 px-1.5 py-0.5 rounded font-mono text-xs border border-slate-700">$1</code>');
+  escaped = escaped.replace(
+    /`([^`]+)`/g,
+    '<code class="bg-black/30 text-cyan-300 px-1.5 py-0.5 rounded font-mono text-xs border border-indigo-500/30 break-all">$1</code>'
+  );
 
-  // Bold *bold*
-  escaped = escaped.replace(/\*([^*]+)\*/g, '<strong class="font-bold text-white">$1</strong>');
+  // Bold **bold** or *bold*
+  escaped = escaped.replace(/\*\*([^*]+)\*\*/g, '<strong class="font-extrabold text-current">$1</strong>');
+  escaped = escaped.replace(/\*([^*]+)\*/g, '<strong class="font-bold text-current">$1</strong>');
 
   // Italic _italic_
-  escaped = escaped.replace(/_([^_]+)_/g, '<em class="italic text-slate-200">$1</em>');
+  escaped = escaped.replace(/_([^_]+)_/g, '<em class="italic opacity-90">$1</em>');
 
   // Strikethrough ~strikethrough~
-  escaped = escaped.replace(/~([^~]+)~'/g, '<del class="line-through text-slate-400">$1</del>');
+  escaped = escaped.replace(/~([^~]+)~/g, '<del class="line-through opacity-75">$1</del>');
 
   // Markdown links [text](url)
-  escaped = escaped.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-indigo-400 hover:text-indigo-300 underline font-medium">$1</a>');
+  escaped = escaped.replace(
+    /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
+    '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-cyan-300 hover:text-cyan-200 underline font-semibold break-all">$1</a>'
+  );
 
   // Raw URLs
   const urlRegex = /(?<!href=")(https?:\/\/[^\s<]+)/g;
-  escaped = escaped.replace(urlRegex, '<a href="$1" target="_blank" rel="noopener noreferrer" class="text-indigo-400 hover:text-indigo-300 underline break-all">$1</a>');
+  escaped = escaped.replace(
+    urlRegex,
+    '<a href="$1" target="_blank" rel="noopener noreferrer" class="text-cyan-300 hover:text-cyan-200 underline font-semibold break-all">$1</a>'
+  );
 
   // Blockquotes (lines starting with &gt; or >)
   const lines = escaped.split('\n');
-  const processedLines = lines.map(line => {
+  const processedLines = lines.map((line) => {
     if (line.startsWith('&gt; ')) {
-      return `<blockquote class="border-l-4 border-indigo-500 pl-3 py-1 my-1 italic bg-indigo-950/30 text-indigo-200 rounded-r">${line.slice(5)}</blockquote>`;
+      return `<blockquote class="border-l-4 border-indigo-400 pl-3 py-1 my-1 italic bg-black/20 text-indigo-100 rounded-r-md">${line.slice(5)}</blockquote>`;
     }
     return line;
   });
