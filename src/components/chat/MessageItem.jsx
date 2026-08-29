@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { renderFormattedText } from '../../utils/textFormatter';
+import { copyToClipboard } from '../../utils/clipboard';
 import { formatTimeAgo, formatClockTime } from '../../utils/timeAgo';
 import { MediaGallery } from './MediaGallery';
 import { useToast } from '../../context/ToastContext';
@@ -127,13 +128,33 @@ export const MessageItem = React.memo(({
     }
   };
 
-  const handleCopyText = () => {
+  const handleCopyText = async () => {
     if (!message.text) return;
-    navigator.clipboard.writeText(message.text);
-    setCopied(true);
-    toast.success('Message copied to clipboard!');
+    const ok = await copyToClipboard(message.text);
+    if (ok) {
+      setCopied(true);
+      toast.success('Message copied to clipboard!');
+      setTimeout(() => setCopied(false), 2000);
+    } else {
+      toast.error('Failed to copy to clipboard.');
+    }
     setShowContextMenu(false);
-    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleTextContainerClick = async (e) => {
+    const codeBlockEl = e.target.closest('code[data-code-block="true"]');
+    if (codeBlockEl) {
+      e.stopPropagation();
+      const codeText = codeBlockEl.textContent || '';
+      if (codeText) {
+        const ok = await copyToClipboard(codeText);
+        if (ok) {
+          toast.success(`Copied code: "${codeText}"`);
+        } else {
+          toast.error('Failed to copy code.');
+        }
+      }
+    }
   };
 
   const handleSelectReaction = (emoji) => {
@@ -277,6 +298,7 @@ export const MessageItem = React.memo(({
           {message.text && (
             <div
               className="whitespace-pre-wrap break-words [overflow-wrap:anywhere] max-w-full font-sans text-[14px] leading-relaxed select-text"
+              onClick={handleTextContainerClick}
               dangerouslySetInnerHTML={{ __html: renderFormattedText(message.text) }}
             />
           )}

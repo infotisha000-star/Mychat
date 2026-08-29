@@ -25,7 +25,7 @@ export const renderFormattedText = (text) => {
   // Code blocks `code`
   escaped = escaped.replace(
     /`([^`]+)`/g,
-    '<code class="bg-black/30 text-cyan-300 px-1.5 py-0.5 rounded font-mono text-xs border border-indigo-500/30 break-all">$1</code>'
+    '<code class="bg-black/30 text-cyan-300 px-1.5 py-0.5 rounded font-mono text-xs border border-indigo-500/30 break-all cursor-pointer hover:bg-black/50 transition-colors select-all" data-code-block="true" title="Click to copy code">$1</code>'
   );
 
   // Bold **bold** or *bold*

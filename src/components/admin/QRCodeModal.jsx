@@ -4,6 +4,7 @@ import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
 import { Copy, Download, Check } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
+import { copyToClipboard } from '../../utils/clipboard';
 
 export const QRCodeModal = ({ isOpen, onClose, code }) => {
   const canvasRef = useRef(null);
@@ -35,11 +36,15 @@ export const QRCodeModal = ({ isOpen, onClose, code }) => {
     }
   }, [isOpen, code]);
 
-  const handleCopyCode = () => {
-    navigator.clipboard.writeText(code);
-    setCopied(true);
-    toast.success(`Access code ${code} copied to clipboard!`);
-    setTimeout(() => setCopied(false), 2000);
+  const handleCopyCode = async () => {
+    const ok = await copyToClipboard(code);
+    if (ok) {
+      setCopied(true);
+      toast.success(`Access code ${code} copied to clipboard!`);
+      setTimeout(() => setCopied(false), 2000);
+    } else {
+      toast.error('Failed to copy code to clipboard.');
+    }
   };
 
   const handleDownloadQR = () => {

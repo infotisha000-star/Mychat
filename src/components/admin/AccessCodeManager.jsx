@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAccessCodes } from '../../hooks/useAccessCodes';
 import { useToast } from '../../context/ToastContext';
+import { copyToClipboard } from '../../utils/clipboard';
 import { formatRemainingTime } from '../../utils/timeAgo';
 import { Button } from '../ui/Button';
 import { QRCodeModal } from './QRCodeModal';
@@ -38,11 +39,15 @@ export const AccessCodeManager = () => {
     }
   };
 
-  const handleCopy = (code, id) => {
-    navigator.clipboard.writeText(code);
-    setCopiedId(id);
-    toast.success(`Access code ${code} copied to clipboard!`);
-    setTimeout(() => setCopiedId(null), 2000);
+  const handleCopy = async (code, id) => {
+    const ok = await copyToClipboard(code);
+    if (ok) {
+      setCopiedId(id);
+      toast.success(`Access code ${code} copied to clipboard!`);
+      setTimeout(() => setCopiedId(null), 2000);
+    } else {
+      toast.error('Failed to copy code to clipboard.');
+    }
   };
 
   return (
