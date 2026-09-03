@@ -43,7 +43,7 @@ export const useAppwriteUpload = () => {
       let processedFile = file;
       if (file.type.startsWith('image/')) {
         try {
-          processedFile = await compressImage(file, 1920, 0.85);
+          processedFile = await compressImage(file, 1280, 0.78);
         } catch (compressErr) {
           console.warn('Image compression warning, using original:', compressErr);
         }

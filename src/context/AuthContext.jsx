@@ -67,14 +67,40 @@ export const AuthProvider = ({ children }) => {
   }, [user]);
 
   // Admin login with instant verification & unique per-device session id
+  // Admin login with Firebase Auth / Password verification
   const adminLogin = async (email, password) => {
     if (!email || !email.trim() || !password || !password.trim()) {
       throw new Error('Please enter both email and password.');
     }
+
+    const cleanEmail = email.trim();
+    const cleanPassword = password.trim();
+
+    // 1. Try Firebase Auth sign-in
+    let authSuccess = false;
+    try {
+      if (signInWithEmailAndPassword && auth) {
+        await signInWithEmailAndPassword(auth, cleanEmail, cleanPassword);
+        authSuccess = true;
+      }
+    } catch (firebaseErr) {
+      console.warn('Firebase Auth signin notice:', firebaseErr.message);
+    }
+
+    // 2. Check environment admin password or fallback admin credential
+    const envAdminEmail = import.meta.env.VITE_ADMIN_EMAIL || 'admin@vortex.app';
+    const envAdminPassword = import.meta.env.VITE_ADMIN_PASSWORD || 'admin123456';
+
+    if (!authSuccess) {
+      if (cleanEmail.toLowerCase() !== envAdminEmail.toLowerCase() || cleanPassword !== envAdminPassword) {
+        throw new Error('Invalid Admin email or password.');
+      }
+    }
+
     const adminSessionId = `admin_sess_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
     const adminUser = {
       uid: adminSessionId,
-      email: email.trim(),
+      email: cleanEmail,
       userName: 'Admin',
       displayName: 'Admin',
       code: 'ADMIN',
@@ -85,7 +111,7 @@ export const AuthProvider = ({ children }) => {
     };
     const sessionObj = {
       sessionId: adminSessionId,
-      email: email.trim(),
+      email: cleanEmail,
       userName: 'Admin',
       code: 'ADMIN',
       role: 'admin',
@@ -154,21 +180,6 @@ export const AuthProvider = ({ children }) => {
       const storedCodes = localStorage.getItem(CODES_STORAGE_KEY);
       let localCodesList = storedCodes ? JSON.parse(storedCodes) : [];
       matchedCode = localCodesList.find((c) => c && (normalizeCode(c.code) === cleanCode || c.cleanCode === cleanCode));
-    }
-
-    // 5. GUARANTEED FAILSAFE: Any code matching standard ROOM-XXXX format or >= 6 chars
-    if (!matchedCode) {
-      if (cleanCode.startsWith('ROOM') || cleanCode.startsWith('VORTEX') || cleanCode.length >= 6) {
-        matchedCode = {
-          id: `code_auto_${cleanCode}`,
-          code: rawCode.trim().toUpperCase(),
-          cleanCode,
-          isActive: true,
-          currentUses: 1,
-          maxUses: 999,
-          expiresAt: new Date(Date.now() + 24 * 3600000).toISOString(),
-        };
-      }
     }
 
     if (matchedCode) {

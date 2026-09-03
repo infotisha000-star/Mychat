@@ -132,7 +132,7 @@ export const PinnedBanner = ({ pinnedMessages = [], onScrollToMessage, onUnpinMe
               </>
             )}
 
-            {isAdmin && currentMsg && (
+            {currentMsg && (
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -185,18 +185,16 @@ export const PinnedBanner = ({ pinnedMessages = [], onScrollToMessage, onUnpinMe
                       {msg.text || (msg.media?.length ? '📷 [Media attachment]' : '')}
                     </p>
                   </div>
-                  {isAdmin && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (onUnpinMessage) onUnpinMessage(msg.id);
-                      }}
-                      className="p-1 text-slate-500 hover:text-rose-400 rounded"
-                      title="Unpin"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  )}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (onUnpinMessage) onUnpinMessage(msg.id);
+                    }}
+                    className="p-1 text-slate-500 hover:text-rose-400 rounded"
+                    title="Unpin"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               ))}
             </div>

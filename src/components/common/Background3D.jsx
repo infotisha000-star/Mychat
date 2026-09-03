@@ -20,21 +20,21 @@ export const Background3D = React.memo(() => {
       {/* Hardware Accelerated Ambient Glow Orbs */}
       <div
         style={{ transform: 'translateZ(0)' }}
-        className={`absolute -top-40 -left-40 w-[350px] sm:w-[500px] h-[350px] sm:h-[500px] rounded-full blur-[60px] sm:blur-[100px] opacity-60 transition-all duration-700 ${
+        className={`absolute -top-40 -left-40 w-[300px] sm:w-[450px] h-[300px] sm:h-[450px] rounded-full blur-[50px] sm:blur-[65px] opacity-50 transition-all duration-700 ${
           activeBgThemeObj?.glowTop || 'bg-indigo-600/20'
         }`}
       />
 
       <div
         style={{ transform: 'translateZ(0)' }}
-        className={`absolute -bottom-40 -right-40 w-[350px] sm:w-[500px] h-[350px] sm:h-[500px] rounded-full blur-[60px] sm:blur-[100px] opacity-50 transition-all duration-700 ${
+        className={`absolute -bottom-40 -right-40 w-[300px] sm:w-[450px] h-[300px] sm:h-[450px] rounded-full blur-[50px] sm:blur-[65px] opacity-40 transition-all duration-700 ${
           activeBgThemeObj?.glowBottom || 'bg-cyan-600/15'
         }`}
       />
 
       <div 
         style={{ transform: 'translateZ(0)' }}
-        className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] sm:w-[600px] h-[400px] sm:h-[600px] rounded-full blur-[70px] sm:blur-[120px] opacity-30 ${
+        className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[350px] sm:w-[500px] h-[350px] sm:h-[500px] rounded-full blur-[60px] sm:blur-[75px] opacity-25 ${
           isDark ? 'bg-violet-900/10' : 'bg-indigo-200/20'
         }`}
       />

@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { Input } from '../ui/Input';
 import { Button } from '../ui/Button';
 import { KeyRound, UserCheck, ArrowRight, Sparkles, QrCode, Camera } from 'lucide-react';
-import confetti from 'canvas-confetti';
-import { QRScannerModal } from './QRScannerModal';
+
+const QRScannerModal = lazy(() => import('./QRScannerModal').then(m => ({ default: m.QRScannerModal })));
 
 const LAST_NAME_KEY = 'vortex_last_user_name';
 
@@ -38,11 +38,9 @@ export const CodeJoinForm = () => {
       localStorage.setItem(LAST_NAME_KEY, cleanName);
       await validateAndJoinWithCode(cleanCode, cleanName);
       
-      confetti({
-        particleCount: 90,
-        spread: 80,
-        origin: { y: 0.6 }
-      });
+      import('canvas-confetti').then((m) => {
+        if (m?.default) m.default({ particleCount: 90, spread: 80, origin: { y: 0.6 } });
+      }).catch(() => {});
 
       toast.success(`Welcome to the chat, ${cleanName}!`);
     } catch (err) {
@@ -156,11 +154,15 @@ export const CodeJoinForm = () => {
       </Button>
 
       {/* Live Camera Scanner Modal */}
-      <QRScannerModal
-        isOpen={showScannerModal}
-        onClose={() => setShowScannerModal(false)}
-        onScanSuccess={handleScanSuccess}
-      />
+      {showScannerModal && (
+        <Suspense fallback={null}>
+          <QRScannerModal
+            isOpen={showScannerModal}
+            onClose={() => setShowScannerModal(false)}
+            onScanSuccess={handleScanSuccess}
+          />
+        </Suspense>
+      )}
     </form>
   );
 };

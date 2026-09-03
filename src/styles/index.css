@@ -27,22 +27,16 @@
   }
 }
 
-/* 90/120 FPS GPU Acceleration & High-Refresh Rate Touch Rules */
+/* High-Performance Smooth Touch Scrolling Rules */
 .overflow-y-auto {
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-y: contain;
-  transform: translateZ(0);
-  will-change: scroll-position;
 }
 
 .msg-bubble-sent,
 .msg-bubble-received,
-.msg-bubble-admin,
-.app-header,
-.msg-composer {
-  backface-visibility: hidden;
-  transform: translateZ(0);
-  contain: layout style;
+.msg-bubble-admin {
+  contain: content;
 }
 
 @media (prefers-reduced-motion: reduce) {

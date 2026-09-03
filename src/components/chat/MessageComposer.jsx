@@ -62,18 +62,45 @@ export const MessageComposer = ({ replyTo = null, onCancelReply }) => {
     };
   }, []);
 
+  // Cleanup Blob Object URLs on component unmount to prevent RAM memory leaks
+  useEffect(() => {
+    return () => {
+      selectedFiles.forEach((item) => {
+        if (item && item.previewUrl) {
+          try {
+            URL.revokeObjectURL(item.previewUrl);
+          } catch (e) {}
+        }
+      });
+    };
+  }, [selectedFiles]);
+
+  const draftSaveTimerRef = useRef(null);
+
   const handleTextChange = (e) => {
     const val = e.target.value;
     setText(val);
-    try {
-      localStorage.setItem(COMPOSER_DRAFT_KEY, val);
-    } catch (err) {
-      console.warn('Draft save notice:', err);
-    }
 
+    // Debounce localStorage draft write to avoid blocking UI thread during typing
+    if (draftSaveTimerRef.current) {
+      clearTimeout(draftSaveTimerRef.current);
+    }
+    draftSaveTimerRef.current = setTimeout(() => {
+      try {
+        localStorage.setItem(COMPOSER_DRAFT_KEY, val);
+      } catch (err) {
+        console.warn('Draft save notice:', err);
+      }
+    }, 400);
+
+    // Schedule DOM height adjustment via requestAnimationFrame
     if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 120)}px`;
+      requestAnimationFrame(() => {
+        if (textareaRef.current) {
+          textareaRef.current.style.height = 'auto';
+          textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 120)}px`;
+        }
+      });
     }
   };
 
@@ -121,24 +148,16 @@ export const MessageComposer = ({ replyTo = null, onCancelReply }) => {
     }
   };
 
-  const handleFileSelect = async (e) => {
+  const handleFileSelect = (e) => {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
 
-    toast.info('Processing media attachments...');
+    toast.info('Attached media file(s).');
 
-    const processedFiles = await Promise.all(
-      files.map(async (file) => {
-        let finalFile = file;
-        if (file.type.startsWith('image/')) {
-          finalFile = await compressImage(file, 1920, 0.85);
-        }
-        return {
-          file: finalFile,
-          previewUrl: finalFile.type.startsWith('image/') ? URL.createObjectURL(finalFile) : '',
-        };
-      })
-    );
+    const processedFiles = files.map((file) => ({
+      file,
+      previewUrl: file.type.startsWith('image/') ? URL.createObjectURL(file) : '',
+    }));
 
     setSelectedFiles((prev) => [...prev, ...processedFiles]);
   };
@@ -423,68 +442,40 @@ export const MessageComposer = ({ replyTo = null, onCancelReply }) => {
           onChange={handleFileSelect}
         />
 
-        {/* Collapsible Left Side Option Buttons */}
-        <AnimatePresence mode="wait">
-          {!isFocused ? (
-            <motion.div
-              key="expanded-options"
-              initial={{ opacity: 0, width: 0, scale: 0.8 }}
-              animate={{ opacity: 1, width: 'auto', scale: 1 }}
-              exit={{ opacity: 0, width: 0, scale: 0.8 }}
-              transition={{ duration: 0.2, ease: 'easeInOut' }}
-              className="flex items-center gap-1.5 overflow-hidden shrink-0"
-            >
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={uploading || sending}
-                className="composer-btn w-10 h-10 rounded-full bg-slate-800/80 border border-slate-700/80 hover:bg-slate-700 hover:text-white transition-all active:scale-95 shrink-0 flex items-center justify-center text-slate-300 shadow-sm"
-                title="Attach photos/videos"
-              >
-                <Paperclip className="w-4 h-4" />
-              </button>
+        {/* Ultra-Fast Stable Left Side Option Buttons */}
+        <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading || sending}
+            className="composer-btn w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-slate-800/80 border border-slate-700/80 hover:bg-slate-700 hover:text-white transition-transform active:scale-95 shrink-0 flex items-center justify-center text-slate-300 shadow-sm"
+            title="Attach photos/videos"
+          >
+            <Paperclip className="w-4 h-4" />
+          </button>
 
-              <button
-                type="button"
-                onClick={() => setShowFormatToolbar(!showFormatToolbar)}
-                className={`w-10 h-10 rounded-full transition-all active:scale-95 shrink-0 flex items-center justify-center shadow-sm ${
-                  showFormatToolbar
-                    ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-indigo-600/40'
-                    : 'composer-btn bg-slate-800/80 border border-slate-700/80 text-slate-300 hover:text-white'
-                }`}
-                title="Formatting Menu"
-              >
-                <Type className="w-4 h-4" />
-              </button>
+          <button
+            type="button"
+            onClick={() => setShowFormatToolbar(!showFormatToolbar)}
+            className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full transition-transform active:scale-95 shrink-0 flex items-center justify-center shadow-sm ${
+              showFormatToolbar
+                ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-indigo-600/40'
+                : 'composer-btn bg-slate-800/80 border border-slate-700/80 text-slate-300 hover:text-white'
+            }`}
+            title="Formatting Menu"
+          >
+            <Type className="w-4 h-4" />
+          </button>
 
-              <button
-                type="button"
-                onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                className="composer-btn w-10 h-10 rounded-full bg-slate-800/80 border border-slate-700/80 hover:bg-slate-700 hover:text-white transition-all active:scale-95 shrink-0 flex items-center justify-center text-slate-300 shadow-sm"
-                title="Emoji"
-              >
-                <Smile className="w-4 h-4" />
-              </button>
-            </motion.div>
-          ) : (
-            <motion.div
-              key="collapsed-plus"
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.8 }}
-              transition={{ duration: 0.15 }}
-            >
-              <button
-                type="button"
-                onClick={() => setIsFocused(false)}
-                className="composer-btn w-10 h-10 rounded-full bg-slate-800/80 border border-slate-700/80 transition-all active:scale-95 shrink-0 flex items-center justify-center text-indigo-400 shadow-sm"
-                title="Show actions"
-              >
-                <Plus className="w-5 h-5" />
-              </button>
-            </motion.div>
-          )}
-        </AnimatePresence>
+          <button
+            type="button"
+            onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+            className="composer-btn w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-slate-800/80 border border-slate-700/80 hover:bg-slate-700 hover:text-white transition-transform active:scale-95 shrink-0 flex items-center justify-center text-slate-300 shadow-sm"
+            title="Emoji"
+          >
+            <Smile className="w-4 h-4" />
+          </button>
+        </div>
 
         {/* Messenger Rounded Input Textarea */}
         <textarea

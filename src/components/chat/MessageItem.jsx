@@ -7,7 +7,6 @@ import { formatTimeAgo, formatClockTime } from '../../utils/timeAgo';
 import { MediaGallery } from './MediaGallery';
 import { useToast } from '../../context/ToastContext';
 import { useTheme } from '../../context/ThemeContext';
-import confetti from 'canvas-confetti';
 import { 
   Copy, 
   Edit3, 
@@ -159,7 +158,9 @@ export const MessageItem = React.memo(({
 
   const handleSelectReaction = (emoji) => {
     if (onToggleReaction) onToggleReaction(message.id, emoji);
-    confetti({ particleCount: 25, spread: 50, origin: { y: 0.7 } });
+    import('canvas-confetti').then((m) => {
+      if (m?.default) m.default({ particleCount: 25, spread: 50, origin: { y: 0.7 } });
+    }).catch(() => {});
     setShowContextMenu(false);
   };
 
@@ -168,7 +169,9 @@ export const MessageItem = React.memo(({
     setShowContextMenu(false);
     if (!message.pinned) {
       toast.success('Message pinned to top banner!');
-      confetti({ particleCount: 35, spread: 60, origin: { y: 0.3 } });
+      import('canvas-confetti').then((m) => {
+        if (m?.default) m.default({ particleCount: 35, spread: 60, origin: { y: 0.3 } });
+      }).catch(() => {});
     } else {
       toast.info('Message unpinned!');
     }

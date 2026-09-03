@@ -35,7 +35,21 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,webmanifest}'],
+        cleanupOutdatedCaches: true,
+        clientsClaim: true,
+        skipWaiting: true,
         runtimeCaching: [
+          {
+            urlPattern: /\.(?:js|css)$/,
+            handler: 'StaleWhileRevalidate',
+            options: {
+              cacheName: 'static-js-css-cache',
+              expiration: {
+                maxEntries: 100,
+                maxAgeSeconds: 60 * 60 * 24 * 30 // 30 days
+              }
+            }
+          },
           {
             urlPattern: /^https:\/\/nyc\.cloud\.appwrite\.io\/v1\/storage\/buckets\/.*\/files\/.*\/view/,
             handler: 'CacheFirst',
@@ -54,6 +68,34 @@ export default defineConfig({
       }
     })
   ],
+  build: {
+    target: 'esnext',
+    cssCodeSplit: true,
+    chunkSizeWarningLimit: 1000,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            if (id.includes('react') || id.includes('react-dom')) {
+              return 'react-vendor';
+            }
+            if (id.includes('firebase')) {
+              return 'firebase-vendor';
+            }
+            if (id.includes('lucide-react')) {
+              return 'icons-vendor';
+            }
+            if (id.includes('framer-motion')) {
+              return 'motion-vendor';
+            }
+            if (id.includes('html5-qrcode') || id.includes('qrcode') || id.includes('appwrite')) {
+              return 'heavy-vendor';
+            }
+          }
+        }
+      }
+    }
+  },
   server: {
     port: 3000,
     host: true

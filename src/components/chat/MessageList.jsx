@@ -3,7 +3,7 @@ import { MessageItem } from './MessageItem';
 import { Skeleton } from '../ui/Skeleton';
 import { useChat } from '../../context/ChatContext';
 import { useToast } from '../../context/ToastContext';
-import { ArrowDown, MessageSquare, Trash2, X } from 'lucide-react';
+import { ArrowDown, MessageSquare, Trash2, X, Search } from 'lucide-react';
 
 export const MessageList = React.memo(({
   messages = [],
@@ -32,9 +32,25 @@ export const MessageList = React.memo(({
     bottomRef.current?.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto' });
   }, []);
 
+  const isInitialLoadRef = useRef(true);
+
   useEffect(() => {
-    if (!isSelectionMode) {
+    if (isSelectionMode) return;
+
+    if (isInitialLoadRef.current) {
       scrollToBottom(false);
+      if (messages.length > 0) isInitialLoadRef.current = false;
+      return;
+    }
+
+    if (containerRef.current) {
+      const { scrollTop, scrollHeight, clientHeight } = containerRef.current;
+      const isNearBottom = scrollHeight - scrollTop - clientHeight < 250;
+      if (isNearBottom) {
+        scrollToBottom(true);
+      }
+    } else {
+      scrollToBottom(true);
     }
   }, [messages.length, isSelectionMode, scrollToBottom]);
 
@@ -100,9 +116,25 @@ export const MessageList = React.memo(({
     );
   }
 
+  const { searchQuery } = useChat();
+
   const validMessages = (Array.isArray(messages) ? messages : []).filter((m) => m && m.id);
 
   if (validMessages.filter((m) => !m.deleted).length === 0) {
+    if (searchQuery && searchQuery.trim()) {
+      return (
+        <div className="flex-1 p-6 flex flex-col items-center justify-center text-center gap-3 text-slate-500">
+          <div className="p-4 rounded-full bg-slate-900 border border-slate-800 text-amber-400">
+            <Search className="w-8 h-8" />
+          </div>
+          <div className="font-semibold text-slate-300">No Matching Messages</div>
+          <p className="text-xs max-w-xs text-slate-400">
+            No messages found matching "{searchQuery}". Try searching for another keyword or sender name.
+          </p>
+        </div>
+      );
+    }
+
     return (
       <div className="flex-1 p-6 flex flex-col items-center justify-center text-center gap-3 text-slate-500">
         <div className="p-4 rounded-full bg-slate-900 border border-slate-800 text-indigo-400">

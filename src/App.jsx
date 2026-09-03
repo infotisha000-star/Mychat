@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, lazy, Suspense } from 'react';
 import { useAuth } from './context/AuthContext';
 import { useChat } from './context/ChatContext';
 
@@ -10,10 +10,12 @@ import { PinnedBanner } from './components/chat/PinnedBanner';
 import { MessageList } from './components/chat/MessageList';
 import { MessageComposer } from './components/chat/MessageComposer';
 import { TypingIndicator } from './components/chat/TypingIndicator';
-import { LightboxViewer } from './components/chat/LightboxViewer';
-import { VideoPlayerModal } from './components/chat/VideoPlayerModal';
-import { AdminDashboard } from './components/admin/AdminDashboard';
-import { AppLockModal } from './components/common/AppLockModal';
+
+// Lazily load heavy modals to keep initial bundle size minimal & load instantly
+const LightboxViewer = lazy(() => import('./components/chat/LightboxViewer').then(m => ({ default: m.LightboxViewer })));
+const VideoPlayerModal = lazy(() => import('./components/chat/VideoPlayerModal').then(m => ({ default: m.VideoPlayerModal })));
+const AdminDashboard = lazy(() => import('./components/admin/AdminDashboard').then(m => ({ default: m.AdminDashboard })));
+const AppLockModal = lazy(() => import('./components/common/AppLockModal').then(m => ({ default: m.AppLockModal })));
 
 export const App = () => {
   const { user, loading: authLoading, isAdmin } = useAuth();
@@ -32,14 +34,25 @@ export const App = () => {
   const [isAdminDashboardOpen, setIsAdminDashboardOpen] = useState(false);
   const [viewportHeight, setViewportHeight] = useState('100dvh');
 
-  // Mobile virtual keyboard visualViewport height tracking for stable header
+  // Mobile virtual keyboard visualViewport height tracking with requestAnimationFrame throttling
   useEffect(() => {
     if (typeof window === 'undefined' || !window.visualViewport) return;
 
+    let rAFId = null;
+    let lastHeight = 0;
+
     const handleResize = () => {
-      if (window.visualViewport) {
-        setViewportHeight(`${window.visualViewport.height}px`);
-      }
+      if (rAFId) return;
+      rAFId = requestAnimationFrame(() => {
+        rAFId = null;
+        if (window.visualViewport) {
+          const currentHeight = Math.round(window.visualViewport.height);
+          if (Math.abs(currentHeight - lastHeight) > 1) {
+            lastHeight = currentHeight;
+            setViewportHeight(`${currentHeight}px`);
+          }
+        }
+      });
     };
 
     window.visualViewport.addEventListener('resize', handleResize);
@@ -47,6 +60,7 @@ export const App = () => {
     handleResize();
 
     return () => {
+      if (rAFId) cancelAnimationFrame(rAFId);
       if (window.visualViewport) {
         window.visualViewport.removeEventListener('resize', handleResize);
         window.visualViewport.removeEventListener('scroll', handleResize);
@@ -149,30 +163,38 @@ export const App = () => {
           />
 
           {/* Media Lightbox & Video Player Modals */}
-          <LightboxViewer
-            isOpen={!!lightboxImage}
-            imageUrl={lightboxImage}
-            onClose={handleCloseLightbox}
-          />
+          <Suspense fallback={null}>
+            {lightboxImage && (
+              <LightboxViewer
+                isOpen={!!lightboxImage}
+                imageUrl={lightboxImage}
+                onClose={handleCloseLightbox}
+              />
+            )}
 
-          <VideoPlayerModal
-            isOpen={!!modalVideo}
-            videoUrl={modalVideo}
-            onClose={handleCloseVideoModal}
-          />
+            {modalVideo && (
+              <VideoPlayerModal
+                isOpen={!!modalVideo}
+                videoUrl={modalVideo}
+                onClose={handleCloseVideoModal}
+              />
+            )}
 
-          {/* Admin Control Center Dashboard */}
-          {isAdmin && (
-            <AdminDashboard
-              isOpen={isAdminDashboardOpen}
-              onClose={handleCloseAdminDashboard}
-            />
-          )}
+            {/* Admin Control Center Dashboard */}
+            {isAdmin && isAdminDashboardOpen && (
+              <AdminDashboard
+                isOpen={isAdminDashboardOpen}
+                onClose={handleCloseAdminDashboard}
+              />
+            )}
+          </Suspense>
         </div>
       )}
 
       {/* Optional Passcode PWA App Lock */}
-      <AppLockModal isAuthenticated={!!user} />
+      <Suspense fallback={null}>
+        <AppLockModal isAuthenticated={!!user} />
+      </Suspense>
     </div>
   );
 };

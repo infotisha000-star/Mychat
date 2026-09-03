@@ -16,7 +16,7 @@ export const formatTimeAgo = (timestamp) => {
   if (isNaN(date.getTime())) return '';
 
   const now = new Date();
-  const diffInSeconds = Math.floor((now - date) / 1000);
+  const diffInSeconds = Math.max(0, Math.floor((now - date) / 1000));
 
   if (diffInSeconds < 15) return 'Just now';
   if (diffInSeconds < 60) return `${diffInSeconds}s ago`;

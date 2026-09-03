@@ -137,11 +137,20 @@ export const ChatProvider = ({ children }) => {
           }
         });
 
+        const getMsgTime = (m) => {
+          if (!m || !m.timestamp) return Date.now();
+          const t = new Date(m.timestamp).getTime();
+          return isNaN(t) ? Date.now() : t;
+        };
         const merged = Array.from(msgMap.values());
-        merged.sort((a, b) => new Date(a.timestamp || 0) - new Date(b.timestamp || 0));
-        try {
-          localStorage.setItem(MESSAGES_KEY, JSON.stringify(merged));
-        } catch (e) {}
+        merged.sort((a, b) => getMsgTime(a) - getMsgTime(b));
+
+        // Asynchronously save to localStorage to avoid blocking UI render frame
+        setTimeout(() => {
+          try {
+            localStorage.setItem(MESSAGES_KEY, JSON.stringify(merged));
+          } catch (e) {}
+        }, 50);
 
         // Play audio chime and display notification for incoming message
         if (hasIncomingNewMessage && incomingMsgObj) {
@@ -227,7 +236,11 @@ export const ChatProvider = ({ children }) => {
           const val = snapshot.val();
           const list = Object.values(val);
           setActiveUsers(list);
-          localStorage.setItem(SESSIONS_KEY, JSON.stringify(list));
+          setTimeout(() => {
+            try {
+              localStorage.setItem(SESSIONS_KEY, JSON.stringify(list));
+            } catch (e) {}
+          }, 100);
         }
       }, (err) => {
         console.warn('Presence listener warning:', err);

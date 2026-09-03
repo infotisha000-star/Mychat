@@ -2,7 +2,7 @@
  * Client-side image dynamic canvas compression helper.
  * Resizes max dimensions to maxDimension (default 1920px) and compresses to WebP or JPEG.
  */
-export const compressImage = async (file, maxDimension = 1920, quality = 0.85) => {
+export const compressImage = async (file, maxDimension = 1280, quality = 0.78) => {
   if (!file || !file.type.startsWith('image/')) {
     return file; // Return original if not an image
   }
@@ -39,11 +39,11 @@ export const compressImage = async (file, maxDimension = 1920, quality = 0.85) =
 
         const ctx = canvas.getContext('2d');
         ctx.imageSmoothingEnabled = true;
-        ctx.imageSmoothingQuality = 'high';
+        ctx.imageSmoothingQuality = 'medium';
         ctx.drawImage(img, 0, 0, width, height);
 
-        // Determine output MIME type (WebP supported by modern mobile browsers)
-        const mimeType = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+        // Prefer image/webp for lightweight size and high compression
+        const outputMime = 'image/webp';
 
         canvas.toBlob(
           (blob) => {
@@ -51,13 +51,14 @@ export const compressImage = async (file, maxDimension = 1920, quality = 0.85) =
               resolve(file); // Fallback to original
               return;
             }
-            const compressedFile = new File([blob], file.name, {
-              type: mimeType,
+            const cleanName = file.name.replace(/\.[^/.]+$/, "") + ".webp";
+            const compressedFile = new File([blob], cleanName, {
+              type: outputMime,
               lastModified: Date.now(),
             });
             resolve(compressedFile);
           },
-          mimeType,
+          outputMime,
           quality
         );
       };
