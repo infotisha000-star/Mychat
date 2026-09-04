@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { normalizeCode } from '../utils/codeGenerator';
 import { db, rtdb, collection, doc, getDoc, getDocs, setDoc, ref, get, set } from '../services/firebase';
 
@@ -241,18 +241,18 @@ export const AuthProvider = ({ children }) => {
     setUser(null);
   };
 
+  const value = useMemo(() => ({
+    user,
+    loading,
+    adminLogin,
+    validateAndJoinWithCode,
+    logout,
+    isAuthenticated: !!user,
+    isAdmin: user?.isAdmin || false,
+  }), [user, loading]);
+
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        loading,
-        adminLogin,
-        validateAndJoinWithCode,
-        logout,
-        isAuthenticated: !!user,
-        isAdmin: user?.isAdmin || false,
-      }}
-    >
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );

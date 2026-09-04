@@ -26,7 +26,7 @@ import {
 const QUICK_EMOJIS = ['👍', '❤️', '🔥', '😂', '😮', '😢', '👏', '🎉'];
 const COMPOSER_DRAFT_KEY = 'vortex_composer_draft';
 
-export const MessageComposer = ({ replyTo = null, onCancelReply }) => {
+export const MessageComposer = React.memo(({ replyTo = null, onCancelReply }) => {
   const { sendMessage } = useChat();
   const { uploadMediaFiles, uploading, uploadProgress } = useAppwriteUpload();
   const toast = useToast();
@@ -513,4 +513,4 @@ export const MessageComposer = ({ replyTo = null, onCancelReply }) => {
       </form>
     </div>
   );
-};
+});

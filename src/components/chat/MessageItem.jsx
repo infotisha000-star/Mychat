@@ -18,7 +18,9 @@ import {
   AlertCircle, 
   Check,
   X,
-  CheckSquare
+  CheckSquare,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
@@ -51,6 +53,7 @@ export const MessageItem = React.memo(({
   const [editText, setEditText] = useState(message.text || '');
   const [editError, setEditError] = useState('');
   const [copied, setCopied] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
 
   const bubbleRef = useRef(null);
 
@@ -297,14 +300,60 @@ export const MessageItem = React.memo(({
             </div>
           )}
 
-          {/* Message Text */}
-          {message.text && (
-            <div
-              className="whitespace-pre-wrap break-words [overflow-wrap:anywhere] max-w-full font-sans text-[14px] leading-relaxed select-text"
-              onClick={handleTextContainerClick}
-              dangerouslySetInnerHTML={{ __html: renderFormattedText(message.text) }}
-            />
-          )}
+          {/* Message Text with Truncation support */}
+          {message.text && (() => {
+            const rawText = message.text || '';
+            const lines = (rawText.match(/\n/g) || []).length;
+            const isLongText = rawText.length > 280 || lines >= 4;
+
+            return (
+              <div className="relative max-w-full">
+                <div
+                  className={`whitespace-pre-wrap break-words [overflow-wrap:anywhere] max-w-full font-sans text-[14px] leading-relaxed select-text transition-all ${
+                    isLongText && !isExpanded ? 'max-h-36 overflow-hidden relative' : ''
+                  }`}
+                  onClick={handleTextContainerClick}
+                  dangerouslySetInnerHTML={{ __html: renderFormattedText(message.text) }}
+                />
+
+                {/* Bottom Fade Gradient when Collapsed */}
+                {isLongText && !isExpanded && (
+                  <div
+                    className={`absolute bottom-0 left-0 right-0 h-12 pointer-events-none rounded-b-xl bg-gradient-to-t ${
+                      isMe
+                        ? 'from-indigo-700/95 via-indigo-600/70 to-transparent'
+                        : isMessageAdmin
+                        ? 'from-slate-950 via-indigo-950/80 to-transparent'
+                        : 'from-slate-900 via-slate-900/80 to-transparent'
+                    }`}
+                  />
+                )}
+
+                {/* Interactive Show More / Show Less Button */}
+                {isLongText && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsExpanded((prev) => !prev);
+                    }}
+                    className={`mt-1.5 flex items-center gap-1 text-[11px] font-bold py-1 px-2.5 rounded-xl transition-all z-10 cursor-pointer select-none border shadow-xs ${
+                      isMe
+                        ? 'bg-white/20 hover:bg-white/30 text-white border-white/30'
+                        : 'bg-indigo-950/90 hover:bg-indigo-900 text-indigo-300 border-indigo-500/50'
+                    }`}
+                  >
+                    <span>{isExpanded ? 'Show Less' : 'Show More'}</span>
+                    {isExpanded ? (
+                      <ChevronUp className="w-3.5 h-3.5 stroke-[2.5]" />
+                    ) : (
+                      <ChevronDown className="w-3.5 h-3.5 stroke-[2.5]" />
+                    )}
+                  </button>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Multi-Media Gallery */}
           {message.media && message.media.length > 0 && (
@@ -350,8 +399,8 @@ export const MessageItem = React.memo(({
         )}
       </div>
 
-      {/* Tap / Click Hold Floating Context Menu (Portal to Body) */}
-      {typeof document !== 'undefined' && createPortal(
+      {/* Tap / Click Hold Floating Context Menu (Portal to Body - Only Mounted When Open) */}
+      {showContextMenu && !isSelectionMode && typeof document !== 'undefined' && createPortal(
         <AnimatePresence>
           {showContextMenu && !isSelectionMode && (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4">

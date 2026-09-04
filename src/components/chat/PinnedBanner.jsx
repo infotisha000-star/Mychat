@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Pin, ChevronRight, ChevronLeft, X, Layers } from 'lucide-react';
 
-export const PinnedBanner = ({ pinnedMessages = [], onScrollToMessage, onUnpinMessage, isAdmin }) => {
+export const PinnedBanner = React.memo(({ pinnedMessages = [], onScrollToMessage, onUnpinMessage, isAdmin }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [showAllModal, setShowAllModal] = useState(false);
 
@@ -203,4 +203,4 @@ export const PinnedBanner = ({ pinnedMessages = [], onScrollToMessage, onUnpinMe
       )}
     </div>
   );
-};
+});

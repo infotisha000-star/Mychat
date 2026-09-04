@@ -4,6 +4,7 @@ export const Input = forwardRef(({
   label,
   error,
   icon: Icon,
+  rightElement,
   type = 'text',
   className = '',
   containerClassName = '',
@@ -18,7 +19,7 @@ export const Input = forwardRef(({
       )}
       <div className="relative flex items-center">
         {Icon && (
-          <div className="absolute left-3.5 text-slate-400 pointer-events-none">
+          <div className="absolute left-3.5 text-slate-400 pointer-events-none z-10">
             <Icon className="w-5 h-5" />
           </div>
         )}
@@ -27,9 +28,14 @@ export const Input = forwardRef(({
           type={type}
           className={`w-full bg-slate-900/80 border ${
             error ? 'border-rose-500/80 focus:ring-rose-500' : 'border-slate-700/80 focus:border-indigo-500 focus:ring-indigo-500/30'
-          } rounded-xl ${Icon ? 'pl-11' : 'px-4'} py-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 transition-all duration-200 shadow-inner ${className}`}
+          } rounded-xl ${Icon ? 'pl-11' : 'px-4'} ${rightElement ? 'pr-12' : 'pr-4'} py-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 transition-all duration-200 shadow-inner ${className}`}
           {...props}
         />
+        {rightElement && (
+          <div className="absolute right-2.5 z-10 flex items-center">
+            {rightElement}
+          </div>
+        )}
       </div>
       {error && (
         <span className="text-xs text-rose-400 font-medium pl-1 animate-fadeIn">

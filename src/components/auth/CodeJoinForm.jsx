@@ -100,28 +100,28 @@ export const CodeJoinForm = () => {
         </button>
       </div>
 
-      <div className="relative">
-        <Input
-          label="Access Code"
-          type="text"
-          placeholder="Enter access code or tap Scan QR"
-          icon={KeyRound}
-          value={code}
-          onChange={(e) => {
-            setCode(e.target.value.toUpperCase());
-            setErrorMessage('');
-          }}
-          required
-        />
-        <button
-          type="button"
-          onClick={() => setShowScannerModal(true)}
-          className="absolute right-3 top-[34px] text-cyan-400 hover:text-cyan-300 p-1.5 rounded-lg bg-slate-900 border border-slate-700/80 transition-colors"
-          title="Scan QR Code with Camera"
-        >
-          <QrCode className="w-4 h-4" />
-        </button>
-      </div>
+      <Input
+        label="Access Code"
+        type="text"
+        placeholder="Enter access code or tap Scan QR"
+        icon={KeyRound}
+        value={code}
+        onChange={(e) => {
+          setCode(e.target.value.toUpperCase());
+          setErrorMessage('');
+        }}
+        rightElement={
+          <button
+            type="button"
+            onClick={() => setShowScannerModal(true)}
+            className="text-cyan-400 hover:text-cyan-300 p-1.5 rounded-lg bg-slate-900 border border-slate-700/80 transition-colors"
+            title="Scan QR Code with Camera"
+          >
+            <QrCode className="w-4 h-4" />
+          </button>
+        }
+        required
+      />
 
       <Input
         label="Enter Your Name"

@@ -17,7 +17,7 @@ export const MessageList = React.memo(({
   onOpenImage,
   onOpenVideo,
 }) => {
-  const { deleteMultipleMessages, toggleReaction } = useChat();
+  const { searchQuery, deleteMultipleMessages, toggleReaction } = useChat();
   const toast = useToast();
 
   const containerRef = useRef(null);
@@ -116,8 +116,6 @@ export const MessageList = React.memo(({
     );
   }
 
-  const { searchQuery } = useChat();
-
   const validMessages = (Array.isArray(messages) ? messages : []).filter((m) => m && m.id);
 
   if (validMessages.filter((m) => !m.deleted).length === 0) {
@@ -188,7 +186,7 @@ export const MessageList = React.memo(({
       <div
         ref={containerRef}
         onScroll={handleScroll}
-        className="flex-1 p-4 overflow-y-auto flex flex-col gap-1 relative scroll-smooth"
+        className="flex-1 p-4 overflow-y-auto flex flex-col gap-1 relative"
       >
         {validMessages.map((msg) => (
           <MessageItem

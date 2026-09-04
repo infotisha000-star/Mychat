@@ -6,6 +6,7 @@ import { Camera, AlertCircle, RefreshCw, Upload, Sparkles } from 'lucide-react';
 import { playReceiveSound } from '../../utils/soundEffects';
 
 export const QRScannerModal = ({ isOpen, onClose, onScanSuccess }) => {
+  const scannerRef = useRef(null);
   const [scannerError, setScannerError] = useState('');
   const [isScanning, setIsScanning] = useState(false);
   const stopScannerSafely = async () => {

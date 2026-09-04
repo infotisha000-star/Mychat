@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 
 const ThemeContext = createContext(null);
 
@@ -71,31 +71,33 @@ export const ThemeProvider = ({ children }) => {
     localStorage.setItem(THEME_STORAGE_KEY, theme);
   }, [theme]);
 
-  const setBgTheme = (themeId) => {
+  const setBgTheme = useCallback((themeId) => {
     setBgThemeState(themeId);
     try {
       localStorage.setItem(BG_THEME_STORAGE_KEY, themeId);
     } catch (e) {}
-  };
+  }, []);
 
-  const toggleTheme = () => {
+  const toggleTheme = useCallback(() => {
     setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
-  };
+  }, []);
 
-  const activeBgThemeObj = CHAT_BG_THEMES.find((t) => t.id === bgTheme) || CHAT_BG_THEMES[0];
+  const activeBgThemeObj = useMemo(() => (
+    CHAT_BG_THEMES.find((t) => t.id === bgTheme) || CHAT_BG_THEMES[0]
+  ), [bgTheme]);
+
+  const value = useMemo(() => ({
+    theme,
+    toggleTheme,
+    isDark: theme === 'dark',
+    bgTheme,
+    setBgTheme,
+    activeBgThemeObj,
+    CHAT_BG_THEMES,
+  }), [theme, toggleTheme, bgTheme, setBgTheme, activeBgThemeObj]);
 
   return (
-    <ThemeContext.Provider
-      value={{
-        theme,
-        toggleTheme,
-        isDark: theme === 'dark',
-        bgTheme,
-        setBgTheme,
-        activeBgThemeObj,
-        CHAT_BG_THEMES,
-      }}
-    >
+    <ThemeContext.Provider value={value}>
       {children}
     </ThemeContext.Provider>
   );

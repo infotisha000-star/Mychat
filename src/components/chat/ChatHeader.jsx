@@ -5,7 +5,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { AppLogo } from '../common/AppLogo';
 import { Users, LogOut, ShieldCheck, Key, Search, X, Sun, Moon, Palette, Check } from 'lucide-react';
 
-export const ChatHeader = ({ onOpenAdminDashboard }) => {
+export const ChatHeader = React.memo(({ onOpenAdminDashboard }) => {
   const { user, logout, isAdmin } = useAuth();
   const { activeUsers, searchQuery, setSearchQuery } = useChat();
   const { isDark, toggleTheme, bgTheme, setBgTheme, CHAT_BG_THEMES, activeBgThemeObj } = useTheme();
@@ -172,4 +172,4 @@ export const ChatHeader = ({ onOpenAdminDashboard }) => {
       )}
     </header>
   );
-};
+});

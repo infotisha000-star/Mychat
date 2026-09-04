@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useMemo } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { CheckCircle2, AlertTriangle, XCircle, Info, X } from 'lucide-react';
 
@@ -22,15 +22,21 @@ export const ToastProvider = ({ children }) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
-  const toastHelpers = {
+  const toastHelpers = useMemo(() => ({
     success: (msg, dur) => addToast(msg, 'success', dur),
     error: (msg, dur) => addToast(msg, 'error', dur),
     warning: (msg, dur) => addToast(msg, 'warning', dur),
     info: (msg, dur) => addToast(msg, 'info', dur),
-  };
+  }), [addToast]);
+
+  const value = useMemo(() => ({
+    addToast,
+    removeToast,
+    toast: toastHelpers,
+  }), [addToast, removeToast, toastHelpers]);
 
   return (
-    <ToastContext.Provider value={{ addToast, removeToast, toast: toastHelpers }}>
+    <ToastContext.Provider value={value}>
       {children}
       {/* Toast Notification Container */}
       <div className="fixed top-14 sm:top-16 left-1/2 -translate-x-1/2 z-50 w-full max-w-sm px-4 pointer-events-none flex flex-col gap-2">

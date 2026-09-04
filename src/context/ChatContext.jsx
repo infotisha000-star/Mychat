@@ -109,6 +109,8 @@ export const ChatProvider = ({ children }) => {
     let unsubRTDB = null;
 
     const mergeAndSetMessages = (newList) => {
+      let incomingMsgObj = null;
+
       setMessages((prev) => {
         const msgMap = new Map();
         const validPrev = Array.isArray(prev) ? prev.filter((m) => m && m.id) : [];
@@ -116,15 +118,11 @@ export const ChatProvider = ({ children }) => {
 
         // Keep existing
         validPrev.forEach((m) => msgMap.set(m.id, m));
-        
-        let hasIncomingNewMessage = false;
-        let incomingMsgObj = null;
 
         // Merge new preserving pinned status across streams
         (Array.isArray(newList) ? newList : []).forEach((m) => {
           if (m && m.id) {
             if (!prevIds.has(m.id) && m.senderId !== user?.uid && !isInitialMount.current) {
-              hasIncomingNewMessage = true;
               incomingMsgObj = m;
             }
             const existing = msgMap.get(m.id);
@@ -145,29 +143,23 @@ export const ChatProvider = ({ children }) => {
         const merged = Array.from(msgMap.values());
         merged.sort((a, b) => getMsgTime(a) - getMsgTime(b));
 
-        // Asynchronously save to localStorage to avoid blocking UI render frame
-        setTimeout(() => {
-          try {
-            localStorage.setItem(MESSAGES_KEY, JSON.stringify(merged));
-          } catch (e) {}
-        }, 50);
-
-        // Play audio chime and display notification for incoming message
-        if (hasIncomingNewMessage && incomingMsgObj) {
-          playReceiveSound();
-          sendIncomingMessageNotification({
-            senderName: incomingMsgObj.senderName,
-            text: incomingMsgObj.text,
-            media: incomingMsgObj.media,
-          });
-        }
-
         if (isInitialMount.current && merged.length > 0) {
           isInitialMount.current = false;
         }
 
         return merged;
       });
+
+      // Play audio chime and display notification for incoming message
+      if (incomingMsgObj) {
+        playReceiveSound();
+        sendIncomingMessageNotification({
+          senderName: incomingMsgObj.senderName,
+          text: incomingMsgObj.text,
+          media: incomingMsgObj.media,
+        });
+      }
+
       setLoadingMessages(false);
     };
 
