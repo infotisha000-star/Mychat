@@ -10,7 +10,7 @@
     font-family: 'Inter', sans-serif;
     -webkit-tap-highlight-color: transparent;
     -webkit-overflow-scrolling: touch;
-    touch-action: manipulation;
+    touch-action: pan-y pan-x;
     transition: background-color 0.3s ease, color 0.3s ease;
   }
 

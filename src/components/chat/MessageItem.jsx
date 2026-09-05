@@ -22,10 +22,11 @@ import {
   ChevronDown,
   ChevronUp
 } from 'lucide-react';
+import { DocumentAttachment } from './DocumentAttachment';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
 
-const REACTION_EMOJIS = ['👍', '❤️', '🔥', '😂', '😮', '😢', '👏', '🎉'];
+const REACTION_EMOJIS = ['👍', '❤️', '🔥', '😂', '😮', '😢', '👏', '🎉', '😡'];
 
 export const MessageItem = React.memo(({
   message,
@@ -202,13 +203,16 @@ export const MessageItem = React.memo(({
     }
   };
 
+  const formattedHtml = React.useMemo(() => {
+    return renderFormattedText(message.text || '');
+  }, [message.text]);
+
   const reactionsMap = message.reactions || {};
   const activeReactionEntries = Object.entries(reactionsMap).filter(([_, users]) => users && users.length > 0);
 
   return (
     <div 
       id={`msg-${message.id}`} 
-      style={{ contentVisibility: 'auto', containIntrinsicSize: '0 60px' }}
       className={`group relative flex items-center gap-3 my-1.5 ${isMe ? 'flex-row-reverse' : 'flex-row'} max-w-full select-none`}
     >
       {/* Selection Checkbox */}
@@ -313,7 +317,7 @@ export const MessageItem = React.memo(({
                     isLongText && !isExpanded ? 'max-h-36 overflow-hidden relative' : ''
                   }`}
                   onClick={handleTextContainerClick}
-                  dangerouslySetInnerHTML={{ __html: renderFormattedText(message.text) }}
+                  dangerouslySetInnerHTML={{ __html: formattedHtml }}
                 />
 
                 {/* Bottom Fade Gradient when Collapsed */}
@@ -354,6 +358,21 @@ export const MessageItem = React.memo(({
               </div>
             );
           })()}
+
+          {/* Document / File Attachments */}
+          {message.documents && message.documents.length > 0 && (
+            <div className="flex flex-col gap-1 my-1">
+              {message.documents.map((doc, idx) => (
+                <DocumentAttachment
+                  key={doc.id || idx}
+                  fileUrl={doc.url}
+                  fileName={doc.name || 'Document'}
+                  fileSize={doc.size}
+                  isMe={isMe}
+                />
+              ))}
+            </div>
+          )}
 
           {/* Multi-Media Gallery */}
           {message.media && message.media.length > 0 && (
@@ -586,3 +605,28 @@ export const MessageItem = React.memo(({
   );
 });
 
+const areEqual = (prevProps, nextProps) => {
+  if (prevProps.isSelected !== nextProps.isSelected) return false;
+  if (prevProps.isSelectionMode !== nextProps.isSelectionMode) return false;
+  if (prevProps.isAdmin !== nextProps.isAdmin) return false;
+  if (prevProps.currentUser?.uid !== nextProps.currentUser?.uid) return false;
+
+  const p = prevProps.message;
+  const n = nextProps.message;
+  if (!p || !n) return false;
+
+  return (
+    p.id === n.id &&
+    p.text === n.text &&
+    p.edited === n.edited &&
+    p.editCount === n.editCount &&
+    p.deleted === n.deleted &&
+    p.pinned === n.pinned &&
+    JSON.stringify(p.reactions) === JSON.stringify(n.reactions) &&
+    JSON.stringify(p.replyTo) === JSON.stringify(n.replyTo) &&
+    JSON.stringify(p.media) === JSON.stringify(n.media) &&
+    JSON.stringify(p.documents) === JSON.stringify(n.documents)
+  );
+};
+
+export const MessageItemMemoized = React.memo(MessageItem, areEqual);

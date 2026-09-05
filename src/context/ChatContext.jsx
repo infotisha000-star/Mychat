@@ -103,67 +103,87 @@ export const ChatProvider = ({ children }) => {
     return () => window.removeEventListener('online', handleOnlineSync);
   }, []);
 
-  // Dual Realtime Stream Listener (Cloud Firestore + Realtime Database)
+  // Real-time Cloud Message Stream Listener with debounced state updates
   useEffect(() => {
     let unsubFirestore = null;
     let unsubRTDB = null;
+    let updateTimer = null;
 
     const mergeAndSetMessages = (newList) => {
-      let incomingMsgObj = null;
+      if (!Array.isArray(newList) || newList.length === 0) return;
 
-      setMessages((prev) => {
-        const msgMap = new Map();
-        const validPrev = Array.isArray(prev) ? prev.filter((m) => m && m.id) : [];
-        const prevIds = new Set(validPrev.map((m) => m.id));
+      if (updateTimer) clearTimeout(updateTimer);
+      updateTimer = setTimeout(() => {
+        let incomingMsgObj = null;
 
-        // Keep existing
-        validPrev.forEach((m) => msgMap.set(m.id, m));
+        setMessages((prev) => {
+          const msgMap = new Map();
+          const validPrev = Array.isArray(prev) ? prev.filter((m) => m && m.id) : [];
+          const prevIds = new Set(validPrev.map((m) => m.id));
 
-        // Merge new preserving pinned status across streams
-        (Array.isArray(newList) ? newList : []).forEach((m) => {
-          if (m && m.id) {
-            if (!prevIds.has(m.id) && m.senderId !== user?.uid && !isInitialMount.current) {
-              incomingMsgObj = m;
+          validPrev.forEach((m) => msgMap.set(m.id, m));
+
+          newList.forEach((m) => {
+            if (m && m.id) {
+              if (!prevIds.has(m.id) && m.senderId !== user?.uid && !isInitialMount.current) {
+                incomingMsgObj = m;
+              }
+              const existing = msgMap.get(m.id);
+              const isPinned = pinnedIds.has(String(m.id)) || Boolean(m.pinned) || Boolean(existing?.pinned);
+              msgMap.set(m.id, {
+                ...(existing || {}),
+                ...m,
+                pinned: isPinned,
+              });
             }
-            const existing = msgMap.get(m.id);
-            const isPinned = pinnedIds.has(String(m.id)) || Boolean(m.pinned) || Boolean(existing?.pinned);
-            msgMap.set(m.id, {
-              ...(existing || {}),
-              ...m,
-              pinned: isPinned,
-            });
+          });
+
+          const merged = Array.from(msgMap.values());
+          merged.sort((a, b) => {
+            const tA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+            const tB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+            return tA - tB;
+          });
+
+          if (isInitialMount.current && merged.length > 0) {
+            isInitialMount.current = false;
           }
+
+          return merged;
         });
 
-        const getMsgTime = (m) => {
-          if (!m || !m.timestamp) return Date.now();
-          const t = new Date(m.timestamp).getTime();
-          return isNaN(t) ? Date.now() : t;
-        };
-        const merged = Array.from(msgMap.values());
-        merged.sort((a, b) => getMsgTime(a) - getMsgTime(b));
-
-        if (isInitialMount.current && merged.length > 0) {
-          isInitialMount.current = false;
+        if (incomingMsgObj) {
+          playReceiveSound();
+          sendIncomingMessageNotification({
+            senderName: incomingMsgObj.senderName,
+            text: incomingMsgObj.text,
+            media: incomingMsgObj.media,
+          });
         }
 
-        return merged;
-      });
-
-      // Play audio chime and display notification for incoming message
-      if (incomingMsgObj) {
-        playReceiveSound();
-        sendIncomingMessageNotification({
-          senderName: incomingMsgObj.senderName,
-          text: incomingMsgObj.text,
-          media: incomingMsgObj.media,
-        });
-      }
-
-      setLoadingMessages(false);
+        setLoadingMessages(false);
+      }, 50);
     };
 
-    // 1. Listen to Cloud Firestore messages
+    // 1. Listen to Realtime Database messages (Primary Stream)
+    try {
+      const msgsRef = ref(rtdb, 'messages');
+      unsubRTDB = onValue(msgsRef, (snapshot) => {
+        if (snapshot.exists()) {
+          const val = snapshot.val();
+          const list = Array.isArray(val)
+            ? val.filter(Boolean)
+            : Object.values(val);
+          mergeAndSetMessages(list);
+        }
+      }, (err) => {
+        console.warn('RTDB messages listener warning:', err);
+      });
+    } catch (e) {
+      console.warn('RTDB listener setup failed:', e);
+    }
+
+    // 2. Fallback Firestore Snapshot listener if RTDB fails
     try {
       const colRef = collection(db, 'messages');
       unsubFirestore = onSnapshot(colRef, (snapshot) => {
@@ -182,31 +202,55 @@ export const ChatProvider = ({ children }) => {
       console.warn('Firestore listener setup failed:', e);
     }
 
-    // 2. Listen to Realtime Database messages
-    try {
-      const msgsRef = ref(rtdb, 'messages');
-      unsubRTDB = onValue(msgsRef, (snapshot) => {
-        if (snapshot.exists()) {
-          const val = snapshot.val();
-          const list = Array.isArray(val)
-            ? val.filter(Boolean)
-            : Object.values(val);
-          mergeAndSetMessages(list);
-        }
-      }, (err) => {
-        console.warn('RTDB messages listener warning:', err);
-      });
-    } catch (e) {
-      console.warn('RTDB listener setup failed:', e);
-    }
-
     return () => {
+      if (updateTimer) clearTimeout(updateTimer);
       if (typeof unsubFirestore === 'function') unsubFirestore();
       if (typeof unsubRTDB === 'function') unsubRTDB();
     };
+  }, [user?.uid, pinnedIds]);
+
+  const [typingUsers, setTypingUsers] = useState({});
+  const [muted, setMuted] = useState(() => {
+    try { return localStorage.getItem('vortex_chat_muted') === 'true'; } catch { return false; }
+  });
+  const [archived, setArchived] = useState(() => {
+    try { return localStorage.getItem('vortex_chat_archived') === 'true'; } catch { return false; }
+  });
+  const [blockedUsers, setBlockedUsers] = useState(() => {
+    try { return new Set(JSON.parse(localStorage.getItem('vortex_blocked_users') || '[]')); } catch { return new Set(); }
+  });
+
+  // Sync Typing Indicators in RTDB
+  useEffect(() => {
+    let unsub = null;
+    try {
+      const typingRef = ref(rtdb, 'typing');
+      unsub = onValue(typingRef, (snapshot) => {
+        if (snapshot.exists()) {
+          setTypingUsers(snapshot.val() || {});
+        } else {
+          setTypingUsers({});
+        }
+      });
+    } catch (e) {}
+    return () => { if (typeof unsub === 'function') unsub(); };
   }, []);
 
-  // Sync Active User Presence in Firebase
+  const sendTypingStatus = useCallback((isTyping) => {
+    if (!user) return;
+    try {
+      if (isTyping) {
+        set(ref(rtdb, `typing/${user.uid}`), {
+          userName: user.userName || (user.isAdmin ? 'Admin' : 'User'),
+          timestamp: Date.now(),
+        }).catch(console.warn);
+      } else {
+        set(ref(rtdb, `typing/${user.uid}`), null).catch(console.warn);
+      }
+    } catch (e) {}
+  }, [user]);
+
+  // Sync Active User Presence in Firebase with lastSeen
   useEffect(() => {
     if (!user) return;
     let unsub = null;
@@ -217,6 +261,8 @@ export const ChatProvider = ({ children }) => {
         userName: user.userName || (user.isAdmin ? 'Admin' : 'User'),
         code: user.code || 'JOINED',
         joinedAt: user.joinedAt || new Date().toISOString(),
+        lastSeen: new Date().toISOString(),
+        isOnline: true,
       };
       set(ref(rtdb, `presence/${user.uid}`), sessionObj).catch(console.warn);
       setDoc(doc(db, 'sessions', user.uid), sessionObj).catch(console.warn);
@@ -244,6 +290,10 @@ export const ChatProvider = ({ children }) => {
     return () => {
       if (typeof unsub === 'function') {
         try { unsub(); } catch (e) {}
+      }
+      if (user) {
+        set(ref(rtdb, `presence/${user.uid}/isOnline`), false).catch(console.warn);
+        set(ref(rtdb, `presence/${user.uid}/lastSeen`), new Date().toISOString()).catch(console.warn);
       }
     };
   }, [user]);
@@ -300,6 +350,8 @@ export const ChatProvider = ({ children }) => {
       text: text.trim(),
       media,
       timestamp: new Date().toISOString(),
+      status: 'sent',
+      readBy: { [user.uid]: new Date().toISOString() },
       edited: false,
       editCount: 0,
       deleted: false,
@@ -324,13 +376,64 @@ export const ChatProvider = ({ children }) => {
       console.warn('LocalStorage save warning:', e);
     }
 
+    // Clear typing status on message send
+    sendTypingStatus(false);
+
     // 2. Dual Cloud Writes in background (Firestore + RTDB)
     setDoc(doc(db, 'messages', newMessage.id), newMessage).catch(console.warn);
     set(ref(rtdb, `messages/${newMessage.id}`), newMessage).catch(console.warn);
 
     notifySync();
     return newMessage.id;
-  }, [user, notifySync]);
+  }, [user, notifySync, sendTypingStatus]);
+
+  // Mark Message as Read / Seen
+  const markAsRead = useCallback((messageId) => {
+    if (!user || !messageId) return;
+    const nowIso = new Date().toISOString();
+    setMessages((prev) =>
+      prev.map((msg) => {
+        if (msg.id === messageId && (!msg.readBy || !msg.readBy[user.uid])) {
+          const updatedReadBy = { ...(msg.readBy || {}), [user.uid]: nowIso };
+          const updatedMsg = { ...msg, status: 'read', readBy: updatedReadBy };
+          setDoc(doc(db, 'messages', messageId), { status: 'read', readBy: updatedReadBy }, { merge: true }).catch(console.warn);
+          set(ref(rtdb, `messages/${messageId}/readBy/${user.uid}`), nowIso).catch(console.warn);
+          set(ref(rtdb, `messages/${messageId}/status`), 'read').catch(console.warn);
+          return updatedMsg;
+        }
+        return msg;
+      })
+    );
+  }, [user]);
+
+  // Toggle Mute Notifications
+  const toggleMute = useCallback(() => {
+    setMuted((prev) => {
+      const next = !prev;
+      try { localStorage.setItem('vortex_chat_muted', String(next)); } catch (e) {}
+      return next;
+    });
+  }, []);
+
+  // Toggle Archive Conversation
+  const toggleArchive = useCallback(() => {
+    setArchived((prev) => {
+      const next = !prev;
+      try { localStorage.setItem('vortex_chat_archived', String(next)); } catch (e) {}
+      return next;
+    });
+  }, []);
+
+  // Toggle Block User
+  const toggleBlockUser = useCallback((targetUserId) => {
+    setBlockedUsers((prev) => {
+      const next = new Set(prev);
+      if (next.has(targetUserId)) next.delete(targetUserId);
+      else next.add(targetUserId);
+      try { localStorage.setItem('vortex_blocked_users', JSON.stringify(Array.from(next))); } catch (e) {}
+      return next;
+    });
+  }, []);
 
   // Instant Non-blocking Reaction Toggle
   const toggleReaction = useCallback(async (messageId, emoji) => {
@@ -533,31 +636,49 @@ export const ChatProvider = ({ children }) => {
     allMessages: messages,
     pinnedMessages,
     activeUsers,
+    typingUsers,
+    sendTypingStatus,
     loadingMessages,
     searchQuery,
     setSearchQuery,
     sendMessage,
+    markAsRead,
     toggleReaction,
     editMessage,
     deleteMessage,
     deleteMultipleMessages,
     clearAllMessages,
     togglePinMessage,
+    muted,
+    toggleMute,
+    archived,
+    toggleArchive,
+    blockedUsers,
+    toggleBlockUser,
     loadStateFromStorage,
   }), [
     filteredMessages,
     messages,
     pinnedMessages,
     activeUsers,
+    typingUsers,
+    sendTypingStatus,
     loadingMessages,
     searchQuery,
     sendMessage,
+    markAsRead,
     toggleReaction,
     editMessage,
     deleteMessage,
     deleteMultipleMessages,
     clearAllMessages,
     togglePinMessage,
+    muted,
+    toggleMute,
+    archived,
+    toggleArchive,
+    blockedUsers,
+    toggleBlockUser,
     loadStateFromStorage,
   ]);
 

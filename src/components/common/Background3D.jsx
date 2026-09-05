@@ -4,44 +4,33 @@ import { useTheme } from '../../context/ThemeContext';
 export const Background3D = React.memo(() => {
   const { isDark, activeBgThemeObj } = useTheme();
 
+  const primary = activeBgThemeObj?.primaryColor || '#6366f1';
+
   return (
     <div 
-      className="fixed inset-0 pointer-events-none overflow-hidden z-0 transition-colors duration-500 isolation-isolate"
-      style={{ contain: 'strict', transform: 'translateZ(0)' }}
+      className="fixed inset-0 pointer-events-none overflow-hidden z-0 isolation-isolate"
+      style={{ contain: 'strict' }}
     >
-      {/* Telegram Chat Geometric Background Pattern Overlay */}
+      {/* Ultra-Fast Radial Gradient Ambient Orbs (Zero GPU/CPU Blur Overhead) */}
       <div 
-        className={`absolute inset-0 opacity-[0.03] ${isDark ? 'invert-0' : 'invert'}`}
+        className="absolute inset-0 transition-opacity duration-700"
         style={{
-          backgroundImage: `radial-gradient(${activeBgThemeObj?.primaryColor || '#6366f1'} 1px, transparent 1px), radial-gradient(#06b6d4 1px, transparent 1px)`,
-          backgroundSize: '24px 24px',
-          backgroundPosition: '0 0, 12px 12px',
-          transform: 'translateZ(0)',
+          background: isDark
+            ? `radial-gradient(circle at 15% 15%, ${primary}18 0%, transparent 45%), radial-gradient(circle at 85% 85%, #06b6d415 0%, transparent 45%)`
+            : `radial-gradient(circle at 15% 15%, ${primary}10 0%, transparent 45%), radial-gradient(circle at 85% 85%, #06b6d410 0%, transparent 45%)`,
         }}
       />
 
-      {/* Hardware Accelerated Ambient Glow Orbs */}
-      <div
-        style={{ transform: 'translateZ(0)' }}
-        className={`absolute -top-40 -left-40 w-[300px] sm:w-[450px] h-[300px] sm:h-[450px] rounded-full blur-[40px] sm:blur-[50px] opacity-40 transition-all duration-700 ${
-          activeBgThemeObj?.glowTop || 'bg-indigo-600/20'
-        }`}
-      />
-
-      <div
-        style={{ transform: 'translateZ(0)' }}
-        className={`absolute -bottom-40 -right-40 w-[300px] sm:w-[450px] h-[300px] sm:h-[450px] rounded-full blur-[40px] sm:blur-[50px] opacity-35 transition-all duration-700 ${
-          activeBgThemeObj?.glowBottom || 'bg-cyan-600/15'
-        }`}
-      />
-
+      {/* Subtle Pattern Grid */}
       <div 
-        style={{ transform: 'translateZ(0)' }}
-        className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[350px] sm:w-[450px] h-[350px] sm:h-[450px] rounded-full blur-[45px] sm:blur-[55px] opacity-20 ${
-          isDark ? 'bg-violet-900/10' : 'bg-indigo-200/20'
-        }`}
+        className={`absolute inset-0 opacity-[0.025] ${isDark ? 'invert-0' : 'invert'}`}
+        style={{
+          backgroundImage: `radial-gradient(${primary} 1px, transparent 1px)`,
+          backgroundSize: '24px 24px',
+        }}
       />
     </div>
   );
 });
+
 

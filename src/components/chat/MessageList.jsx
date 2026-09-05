@@ -1,9 +1,10 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { MessageItem } from './MessageItem';
+import { MessageItemMemoized as MessageItem } from './MessageItem';
 import { Skeleton } from '../ui/Skeleton';
 import { useChat } from '../../context/ChatContext';
 import { useToast } from '../../context/ToastContext';
-import { ArrowDown, MessageSquare, Trash2, X, Search } from 'lucide-react';
+import { formatDateSeparator, isDifferentDay } from '../../utils/dateUtils';
+import { ArrowDown, MessageSquare, Trash2, X, Search, ChevronUp } from 'lucide-react';
 
 export const MessageList = React.memo(({
   messages = [],
@@ -17,12 +18,14 @@ export const MessageList = React.memo(({
   onOpenImage,
   onOpenVideo,
 }) => {
-  const { searchQuery, deleteMultipleMessages, toggleReaction } = useChat();
+  const { searchQuery, deleteMultipleMessages, toggleReaction, markAsRead } = useChat();
   const toast = useToast();
 
   const containerRef = useRef(null);
   const bottomRef = useRef(null);
   const [showScrollBottom, setShowScrollBottom] = useState(false);
+  const [unreadBadgeCount, setUnreadBadgeCount] = useState(0);
+  const [displayCount, setDisplayCount] = useState(50);
 
   // Multi-Selection State
   const [isSelectionMode, setIsSelectionMode] = useState(false);
@@ -30,28 +33,33 @@ export const MessageList = React.memo(({
 
   const scrollToBottom = useCallback((smooth = true) => {
     bottomRef.current?.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto' });
+    setUnreadBadgeCount(0);
   }, []);
 
   const isInitialLoadRef = useRef(true);
+  const prevMsgLengthRef = useRef(messages.length);
 
   useEffect(() => {
-    if (isSelectionMode) return;
+    if (isSelectionMode || !containerRef.current) return;
 
     if (isInitialLoadRef.current) {
-      scrollToBottom(false);
-      if (messages.length > 0) isInitialLoadRef.current = false;
+      if (messages.length > 0) {
+        scrollToBottom(false);
+        isInitialLoadRef.current = false;
+      }
       return;
     }
 
-    if (containerRef.current) {
-      const { scrollTop, scrollHeight, clientHeight } = containerRef.current;
-      const isNearBottom = scrollHeight - scrollTop - clientHeight < 250;
-      if (isNearBottom) {
-        scrollToBottom(true);
-      }
-    } else {
+    const { scrollTop, scrollHeight, clientHeight } = containerRef.current;
+    const isNearBottom = scrollHeight - scrollTop - clientHeight < 150;
+
+    if (isNearBottom) {
       scrollToBottom(true);
+    } else if (messages.length > prevMsgLengthRef.current) {
+      setUnreadBadgeCount((prev) => prev + 1);
     }
+
+    prevMsgLengthRef.current = messages.length;
   }, [messages.length, isSelectionMode, scrollToBottom]);
 
   const handleScroll = useCallback(() => {
@@ -59,6 +67,10 @@ export const MessageList = React.memo(({
     const { scrollTop, scrollHeight, clientHeight } = containerRef.current;
     const isUp = scrollHeight - scrollTop - clientHeight > 150;
     setShowScrollBottom((prev) => (prev !== isUp ? isUp : prev));
+
+    if (!isUp) {
+      setUnreadBadgeCount(0);
+    }
   }, []);
 
   // Start selection mode from a message
@@ -188,35 +200,71 @@ export const MessageList = React.memo(({
         onScroll={handleScroll}
         className="flex-1 p-4 overflow-y-auto flex flex-col gap-1 relative"
       >
-        {validMessages.map((msg) => (
-          <MessageItem
-            key={msg.id}
-            message={msg}
-            currentUser={currentUser}
-            isAdmin={isAdmin}
-            isSelectionMode={isSelectionMode}
-            isSelected={selectedIds.has(msg.id)}
-            onToggleSelect={handleToggleSelect}
-            onStartSelectionMode={handleStartSelectionMode}
-            onReply={onReply}
-            onEdit={onEdit}
-            onDelete={onDelete}
-            onPin={onPin}
-            onToggleReaction={toggleReaction}
-            onOpenImage={onOpenImage}
-            onOpenVideo={onOpenVideo}
-          />
-        ))}
+        {/* Load Older Messages Pagination Trigger */}
+        {validMessages.length > displayCount && (
+          <div className="flex justify-center my-2">
+            <button
+              onClick={() => setDisplayCount((prev) => prev + 50)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-800/90 hover:bg-slate-700 text-indigo-300 text-xs font-semibold border border-indigo-500/30 shadow-md transition-all active:scale-95 cursor-pointer"
+            >
+              <ChevronUp className="w-4 h-4" />
+              <span>Load Older Messages ({validMessages.length - displayCount} remaining)</span>
+            </button>
+          </div>
+        )}
+
+        {/* Message Item Stream with Messenger Date Separators */}
+        {(() => {
+          const visibleMessages = validMessages.slice(-displayCount);
+          return visibleMessages.map((msg, index) => {
+            const prevMsg = index > 0 ? visibleMessages[index - 1] : null;
+            const showDateHeader = !prevMsg || isDifferentDay(msg.timestamp, prevMsg.timestamp);
+
+            return (
+              <React.Fragment key={msg.id || index}>
+                {showDateHeader && (
+                  <div className="flex items-center justify-center my-3 select-none">
+                    <div className="px-3 py-1 rounded-full bg-slate-950/80 border border-slate-800/80 text-[11px] font-semibold text-slate-400 dark:text-slate-400 light:text-slate-600 shadow-inner">
+                      {formatDateSeparator(msg.timestamp)}
+                    </div>
+                  </div>
+                )}
+
+                <MessageItem
+                  message={msg}
+                  currentUser={currentUser}
+                  isAdmin={isAdmin}
+                  isSelectionMode={isSelectionMode}
+                  isSelected={selectedIds.has(msg.id)}
+                  onToggleSelect={handleToggleSelect}
+                  onStartSelectionMode={handleStartSelectionMode}
+                  onReply={onReply}
+                  onEdit={onEdit}
+                  onDelete={onDelete}
+                  onPin={onPin}
+                  onToggleReaction={toggleReaction}
+                  onOpenImage={onOpenImage}
+                  onOpenVideo={onOpenVideo}
+                />
+              </React.Fragment>
+            );
+          });
+        })()}
         <div ref={bottomRef} className="h-1" />
       </div>
 
-      {/* Floating Telegram-style Scroll-to-Bottom Button */}
+      {/* Floating Messenger-style Scroll-to-Bottom Button + New Message Badge */}
       {showScrollBottom && !isSelectionMode && (
         <button
           onClick={() => scrollToBottom(true)}
-          className="absolute bottom-4 right-4 p-3 rounded-full bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white shadow-2xl shadow-indigo-950/80 border border-indigo-400/40 z-30 flex items-center justify-center transition-all hover:scale-110 active:scale-95 animate-bounce cursor-pointer"
+          className="absolute bottom-4 right-4 p-3 rounded-full bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white shadow-2xl shadow-indigo-950/80 border border-indigo-400/40 z-30 flex items-center justify-center transition-all hover:scale-110 active:scale-95 animate-bounce cursor-pointer group"
           title="Scroll to latest messages"
         >
+          {unreadBadgeCount > 0 && (
+            <span className="absolute -top-2 -left-2 bg-rose-500 text-white font-bold text-[10px] px-2 py-0.5 rounded-full border border-rose-300 shadow-md">
+              {unreadBadgeCount} new
+            </span>
+          )}
           <ArrowDown className="w-5 h-5 stroke-[2.5]" />
         </button>
       )}

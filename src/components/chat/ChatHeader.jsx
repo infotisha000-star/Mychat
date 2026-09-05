@@ -2,15 +2,49 @@ import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useChat } from '../../context/ChatContext';
 import { useTheme } from '../../context/ThemeContext';
+import { useToast } from '../../context/ToastContext';
 import { AppLogo } from '../common/AppLogo';
-import { Users, LogOut, ShieldCheck, Key, Search, X, Sun, Moon, Palette, Check } from 'lucide-react';
+import { Users, LogOut, ShieldCheck, Key, Search, X, Sun, Moon, Palette, Check, RotateCw } from 'lucide-react';
 
 export const ChatHeader = React.memo(({ onOpenAdminDashboard }) => {
   const { user, logout, isAdmin } = useAuth();
-  const { activeUsers, searchQuery, setSearchQuery } = useChat();
+  const { activeUsers, typingUsers, searchQuery, setSearchQuery } = useChat();
   const { isDark, toggleTheme, bgTheme, setBgTheme, CHAT_BG_THEMES, activeBgThemeObj } = useTheme();
+  const toast = useToast();
   const [showSearch, setShowSearch] = useState(false);
   const [showThemePicker, setShowThemePicker] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const handlePwaSyncUpdate = async () => {
+    setIsSyncing(true);
+    toast.info('Checking for PWA updates & syncing state...');
+
+    try {
+      if ('serviceWorker' in navigator) {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        for (const reg of registrations) {
+          await reg.update();
+        }
+      }
+
+      if ('caches' in window) {
+        const keys = await caches.keys();
+        await Promise.all(keys.map((k) => caches.delete(k)));
+      }
+
+      toast.success('PWA updated to latest version! Refreshing...');
+      setTimeout(() => {
+        window.location.reload(true);
+      }, 650);
+    } catch (e) {
+      console.warn('PWA sync notice:', e);
+      window.location.reload(true);
+    }
+  };
+
+  const activeTypingNames = Object.values(typingUsers || {})
+    .filter(t => t && t.userName && t.userName !== user?.userName)
+    .map(t => t.userName);
 
   return (
     <header className="app-header sticky top-0 z-30 bg-slate-900/90 backdrop-blur-md border-b border-slate-800/80 px-2.5 sm:px-4 py-2 flex items-center justify-between shadow-lg shrink-0 transition-colors duration-300 w-full">
@@ -48,15 +82,24 @@ export const ChatHeader = React.memo(({ onOpenAdminDashboard }) => {
         </div>
       ) : (
         <>
-          {/* Left: Brand Logo & Online Badge */}
+          {/* Left: Brand Logo & Online Badge & Realtime Typing */}
           <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0 min-w-0">
             <AppLogo size="sm" />
             
-            {/* Active Users Indicator */}
-            <div className="online-badge flex items-center gap-1 px-2 py-1 rounded-full bg-emerald-950/60 dark:bg-emerald-950/60 light:bg-emerald-100 border border-emerald-500/40 text-emerald-400 dark:text-emerald-400 light:text-emerald-700 text-[11px] sm:text-xs font-semibold whitespace-nowrap shrink-0">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
-              <Users className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
-              <span className="whitespace-nowrap">{activeUsers.length || 1} <span className="hidden xs:inline">Online</span></span>
+            <div className="flex flex-col">
+              {/* Active Users Indicator */}
+              <div className="online-badge flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-950/60 dark:bg-emerald-950/60 light:bg-emerald-100 border border-emerald-500/40 text-emerald-400 dark:text-emerald-400 light:text-emerald-700 text-[11px] font-semibold whitespace-nowrap shrink-0">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                <Users className="w-3 h-3 shrink-0" />
+                <span className="whitespace-nowrap">{activeUsers.length || 1} Online</span>
+              </div>
+
+              {/* Real-time Typing Status Header Line */}
+              {activeTypingNames.length > 0 && (
+                <div className="text-[10px] text-indigo-400 font-medium animate-pulse truncate max-w-[140px]">
+                  {activeTypingNames.join(', ')} typing...
+                </div>
+              )}
             </div>
           </div>
 
@@ -130,6 +173,16 @@ export const ChatHeader = React.memo(({ onOpenAdminDashboard }) => {
               title={isDark ? 'Switch to Light Theme' : 'Switch to Dark Theme'}
             >
               {isDark ? <Sun className="w-4 h-4 text-amber-400 shrink-0" /> : <Moon className="w-4 h-4 text-indigo-600 shrink-0" />}
+            </button>
+
+            {/* PWA Auto-Update & State Sync Button */}
+            <button
+              onClick={handlePwaSyncUpdate}
+              disabled={isSyncing}
+              className="app-header-btn p-1.5 sm:p-2 rounded-xl bg-slate-800/80 border border-slate-700/80 transition-transform active:scale-95 flex items-center justify-center shrink-0 text-cyan-400 hover:text-cyan-300"
+              title="Sync & Auto-Update PWA App"
+            >
+              <RotateCw className={`w-4 h-4 shrink-0 ${isSyncing ? 'animate-spin' : ''}`} />
             </button>
 
             {/* Search Toggle */}

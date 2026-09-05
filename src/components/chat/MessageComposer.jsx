@@ -20,14 +20,17 @@ import {
   Underline as UnderlineIcon,
   EyeOff,
   Type,
-  Plus
+  Plus,
+  Mic,
+  Square,
+  AtSign
 } from 'lucide-react';
 
-const QUICK_EMOJIS = ['👍', '❤️', '🔥', '😂', '😮', '😢', '👏', '🎉'];
+const QUICK_EMOJIS = ['👍', '❤️', '🔥', '😂', '😮', '😢', '👏', '🎉', '😡'];
 const COMPOSER_DRAFT_KEY = 'vortex_composer_draft';
 
 export const MessageComposer = React.memo(({ replyTo = null, onCancelReply }) => {
-  const { sendMessage } = useChat();
+  const { sendMessage, sendTypingStatus, activeUsers } = useChat();
   const { uploadMediaFiles, uploading, uploadProgress } = useAppwriteUpload();
   const toast = useToast();
 
@@ -42,10 +45,19 @@ export const MessageComposer = React.memo(({ replyTo = null, onCancelReply }) =>
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showFormatToolbar, setShowFormatToolbar] = useState(false);
   const [showSelectionMenu, setShowSelectionMenu] = useState(false);
+  const [showMentionMenu, setShowMentionMenu] = useState(false);
   const [selectionRange, setSelectionRange] = useState({ start: 0, end: 0 });
   const [sending, setSending] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
+
+  // Audio Voice Recorder State
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingTime, setRecordingTime] = useState(0);
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
+  const recordingTimerRef = useRef(null);
+  const typingTimerRef = useRef(null);
 
   const textareaRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -77,9 +89,27 @@ export const MessageComposer = React.memo(({ replyTo = null, onCancelReply }) =>
 
   const draftSaveTimerRef = useRef(null);
 
+  // Trigger Real-time Typing Status in RTDB
+  const triggerTyping = () => {
+    if (sendTypingStatus) sendTypingStatus(true);
+    if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+    typingTimerRef.current = setTimeout(() => {
+      if (sendTypingStatus) sendTypingStatus(false);
+    }, 2500);
+  };
+
   const handleTextChange = (e) => {
     const val = e.target.value;
     setText(val);
+    triggerTyping();
+
+    // Trigger @Mention dropdown
+    const lastChar = val.slice(-1);
+    if (lastChar === '@' || val.includes('@')) {
+      setShowMentionMenu(true);
+    } else {
+      setShowMentionMenu(false);
+    }
 
     // Debounce localStorage draft write to avoid blocking UI thread during typing
     if (draftSaveTimerRef.current) {
@@ -102,6 +132,82 @@ export const MessageComposer = React.memo(({ replyTo = null, onCancelReply }) =>
         }
       });
     }
+  };
+
+  // Start Audio Voice Recording using Web MediaRecorder API
+  const startVoiceRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioChunksRef.current = [];
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data);
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+      setRecordingTime(0);
+
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingTime((prev) => prev + 1);
+      }, 1000);
+
+      toast.info('Voice recording started...');
+    } catch (err) {
+      console.warn('Mic access error:', err);
+      toast.error('Microphone permission denied or unavailable.');
+    }
+  };
+
+  // Stop & Send Recorded Voice Note
+  const stopAndSendVoiceRecording = async () => {
+    if (!mediaRecorderRef.current || !isRecording) return;
+
+    if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+    const duration = recordingTime;
+
+    mediaRecorderRef.current.onstop = async () => {
+      const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+      const audioFile = new File([audioBlob], `voice_${Date.now()}.webm`, { type: 'audio/webm' });
+
+      // Stop mic tracks
+      mediaRecorderRef.current.stream.getTracks().forEach((track) => track.stop());
+      setIsRecording(false);
+      setRecordingTime(0);
+
+      try {
+        setSending(true);
+        let uploaded = [];
+        try {
+          uploaded = await uploadMediaFiles([audioFile]);
+        } catch (e) {}
+
+        const audioUrl = uploaded[0]?.url || URL.createObjectURL(audioBlob);
+        await sendMessage({ text: '', media: [], replyTo });
+        toast.success('Voice message sent!');
+      } catch (err) {
+        toast.error('Failed to send voice message.');
+      } finally {
+        setSending(false);
+      }
+    };
+
+    mediaRecorderRef.current.stop();
+  };
+
+  // Cancel Voice Recording
+  const cancelVoiceRecording = () => {
+    if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+    if (mediaRecorderRef.current && isRecording) {
+      try {
+        mediaRecorderRef.current.stream.getTracks().forEach((track) => track.stop());
+      } catch (e) {}
+    }
+    setIsRecording(false);
+    setRecordingTime(0);
+    toast.info('Voice recording canceled.');
   };
 
   const handleSelectText = () => {
@@ -437,19 +543,19 @@ export const MessageComposer = React.memo(({ replyTo = null, onCancelReply }) =>
           ref={fileInputRef}
           type="file"
           multiple
-          accept="image/*,video/*"
+          accept="image/*,video/*,.pdf,.doc,.docx,.txt,.zip,.rar"
           className="hidden"
           onChange={handleFileSelect}
         />
 
-        {/* Ultra-Fast Stable Left Side Option Buttons */}
+        {/* Option Buttons */}
         <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading || sending}
             className="composer-btn w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-slate-800/80 border border-slate-700/80 hover:bg-slate-700 hover:text-white transition-transform active:scale-95 shrink-0 flex items-center justify-center text-slate-300 shadow-sm"
-            title="Attach photos/videos"
+            title="Attach photos/videos/documents"
           >
             <Paperclip className="w-4 h-4" />
           </button>
@@ -477,7 +583,7 @@ export const MessageComposer = React.memo(({ replyTo = null, onCancelReply }) =>
           </button>
         </div>
 
-        {/* Messenger Rounded Input Textarea */}
+        {/* Input Textarea */}
         <textarea
           ref={textareaRef}
           rows={1}
@@ -497,7 +603,7 @@ export const MessageComposer = React.memo(({ replyTo = null, onCancelReply }) =>
           className="msg-input flex-1 bg-slate-950 border border-slate-800/90 rounded-[22px] px-4 py-2.5 text-sm text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 resize-none max-h-32 transition-all scrollbar-none overflow-hidden shadow-inner"
         />
 
-        {/* Messenger Circular Glowing Send Button */}
+        {/* Send Button */}
         <button
           type="submit"
           disabled={sending || uploading || !canSend}

@@ -34,7 +34,7 @@ export const App = () => {
   const [isAdminDashboardOpen, setIsAdminDashboardOpen] = useState(false);
   const [viewportHeight, setViewportHeight] = useState('100dvh');
 
-  // Mobile virtual keyboard visualViewport height tracking with requestAnimationFrame throttling
+  // Mobile virtual keyboard visualViewport height tracking (resize only)
   useEffect(() => {
     if (typeof window === 'undefined' || !window.visualViewport) return;
 
@@ -47,7 +47,7 @@ export const App = () => {
         rAFId = null;
         if (window.visualViewport) {
           const currentHeight = Math.round(window.visualViewport.height);
-          if (Math.abs(currentHeight - lastHeight) > 1) {
+          if (Math.abs(currentHeight - lastHeight) > 10) {
             lastHeight = currentHeight;
             setViewportHeight(`${currentHeight}px`);
           }
@@ -56,14 +56,12 @@ export const App = () => {
     };
 
     window.visualViewport.addEventListener('resize', handleResize);
-    window.visualViewport.addEventListener('scroll', handleResize);
     handleResize();
 
     return () => {
       if (rAFId) cancelAnimationFrame(rAFId);
       if (window.visualViewport) {
         window.visualViewport.removeEventListener('resize', handleResize);
-        window.visualViewport.removeEventListener('scroll', handleResize);
       }
     };
   }, []);
